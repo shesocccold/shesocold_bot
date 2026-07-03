@@ -37,19 +37,21 @@ FAVORITES_BUTTON = "⭐ любимое"
 ADMIN_BUTTON = "⚙️ админка"
 BACK_BUTTON = "⬅️ назад"
 
-DAD_BUTTON = "🥚 папины омлеты"
+DAD_BUTTON = "🥚 папин раздел"
+DAD_BUTTON_ALIASES = {DAD_BUTTON, "🥚 папины омлеты"}
 RANDOM_BUTTON = "🎲 рандомный рецепт"
 SEARCH_BUTTON = "🔎 найти рецепт"
-ALL_BUTTON = "📚 все рецепты"
+ALL_BUTTON = "🧑‍🍳 все рецепты"
 RECIPE_FAVORITES_BUTTON = "⭐ любимые рецепты"
 
 ALL_PLACES_BUTTON = "📚 все места"
 PLACE_SEARCH_BUTTON = "🔎 найти место"
 RANDOM_PLACE_BUTTON = "🎲 куда сходить"
 PLACE_FAVORITES_BUTTON = "⭐ любимые места"
-VISITED_PLACES_BUTTON = "✅ где Аня была"
+VISITED_PLACES_BUTTON = "🫦 где Аня была"
 WISHLIST_PLACES_BUTTON = "📝 Аня хочет сходить"
 DEFAULT_PLACES_MAP_URL = "https://yandex.ru/maps/?um=constructor%3A2d5f7ca17c7cad37b342c0a2d3038a5b02563b904e5dfdb3bb4034bbcaa2f8b4&source=constructorLink"
+DAD_DENIED_PHOTO = Path("assets") / "dad" / "wrong-password.png"
 
 DAD_PASSWORD = "тома"
 DAD_CLUSTER_LABELS = {
@@ -62,8 +64,47 @@ DAD_CLUSTER_LABELS = {
 DAD_CLUSTER_ORDER = ["classic", "tender", "cheese", "hearty", "vegetables"]
 
 PLACE_STATUS_LABELS = {
-    "visited": "Аня была",
+    "visited": "🫦 Аня была",
     "wishlist": "Аня хочет сходить",
+}
+METRO_LINE_EMOJIS = {
+    "Арбатская": "🔵",
+    "Бауманская": "🔵",
+    "Баррикадная": "🟣",
+    "Белорусская": "🟢🟤",
+    "Китай-город": "🟣🟠",
+    "Комсомольская": "🔴🟤",
+    "Красные Ворота": "🔴",
+    "Краснопресненская": "🟤",
+    "Кропоткинская": "🔴",
+    "Кузнецкий Мост": "🟣",
+    "Курская": "🔵🟤",
+    "Лубянка": "🔴",
+    "Маяковская": "🟢",
+    "Менделеевская": "⚫",
+    "Новокузнецкая": "🟢",
+    "Новослободская": "🟤",
+    "Октябрьская": "🟠🟤",
+    "Охотный Ряд": "🔴",
+    "Парк культуры": "🔴🟤",
+    "Площадь Ильича": "🟡",
+    "Полянка": "⚫",
+    "Пушкинская": "🟣",
+    "Римская": "🟢",
+    "Смоленская": "🔵",
+    "Сретенский бульвар": "🟢",
+    "Сухаревская": "🟠",
+    "Таганская": "🟣🟤",
+    "Тверская": "🟢",
+    "Театральная": "🟢",
+    "Третьяковская": "🟠🟡",
+    "Трубная": "🟢",
+    "Тургеневская": "🟠",
+    "Фрунзенская": "🔴",
+    "Цветной бульвар": "⚫",
+    "Чеховская": "⚫",
+    "Чистые пруды": "🔴",
+    "Чкаловская": "🟢",
 }
 PLACE_TYPE_LABELS = {
     "coffee": "кофе",
@@ -352,7 +393,7 @@ def all_menu_buttons() -> set[str]:
         FAVORITES_BUTTON,
         ADMIN_BUTTON,
         BACK_BUTTON,
-        DAD_BUTTON,
+        *DAD_BUTTON_ALIASES,
         RANDOM_BUTTON,
         SEARCH_BUTTON,
         ALL_BUTTON,
@@ -387,7 +428,7 @@ async def route_menu_button(message: Message, state: FSMContext, text: str) -> b
         await handle_favorites_home(message)
     elif text == ADMIN_BUTTON:
         await handle_admin_home(message, state)
-    elif text == DAD_BUTTON:
+    elif text in DAD_BUTTON_ALIASES:
         await handle_dad_gate(message, state)
     elif text == RANDOM_BUTTON:
         await handle_random_recipe(message, state)
@@ -1317,7 +1358,7 @@ def place_filter_summary(filters: dict[str, Any]) -> str:
     if filters.get("city"):
         parts.append(str(filters["city"]))
     if filters.get("metro"):
-        parts.append(f"метро {filters['metro']}")
+        parts.append(f"метро {metro_label(filters['metro'])}")
     if filters.get("favorite"):
         parts.append("мои любимые")
     if filters.get("has_photo"):
@@ -1326,6 +1367,15 @@ def place_filter_summary(filters: dict[str, Any]) -> str:
         parts.append("по словам: " + ", ".join(filters["terms"]))
 
     return "; ".join(parts)
+
+
+def metro_label(metro: Any) -> str:
+    name = str(metro or "").strip()
+    if not name:
+        return ""
+
+    emoji = METRO_LINE_EMOJIS.get(name)
+    return f"{emoji} {name}" if emoji else name
 
 
 def format_place(place: dict[str, Any]) -> str:
@@ -1338,7 +1388,7 @@ def format_place(place: dict[str, Any]) -> str:
     url = str(place.get("url") or "").strip()
 
     type_text = ", ".join(PLACE_TYPE_LABELS.get(place_type, place_type) for place_type in types) if isinstance(types, list) else ""
-    metro_text = ", ".join(str(item) for item in metro) if isinstance(metro, list) and metro else "не указано"
+    metro_text = ", ".join(metro_label(item) for item in metro) if isinstance(metro, list) and metro else "не указано"
     tag_text = ", ".join(str(item) for item in tags) if isinstance(tags, list) and tags else ""
     review_text = f"\nотзыв: {review}" if review else ""
     tags_text = f"\nтеги: {tag_text}" if tag_text else ""
@@ -1496,16 +1546,16 @@ def recipe_list_keyboard(
 
 def all_categories_keyboard(recipes: list[dict[str, Any]]) -> InlineKeyboardMarkup:
     buttons: list[InlineKeyboardButton] = [
-        InlineKeyboardButton(text=f"все рецепты ({len(recipes)})", callback_data="category:special:all")
+        InlineKeyboardButton(text=f"🧑‍🍳 все рецепты ({len(recipes)})", callback_data="category:special:all")
     ]
     seen_categories: set[str] = set()
     category_labels = {
-        "завтрак": "завтраки",
-        "ужин": "ужины",
-        "паста": "паста",
-        "суп": "супы",
-        "десерт": "десерты",
-        "салат": "салаты",
+        "завтрак": "🍳 завтраки",
+        "ужин": "🍽 ужины",
+        "паста": "🍝 паста",
+        "суп": "🥣 супы",
+        "десерт": "🍰 десерты",
+        "салат": "🥗 салаты",
     }
 
     for recipe in recipes:
@@ -1525,19 +1575,19 @@ def all_categories_keyboard(recipes: list[dict[str, Any]]) -> InlineKeyboardMark
 
     quick_count = sum(1 for recipe in recipes if is_quick(recipe))
     if quick_count:
-        buttons.append(InlineKeyboardButton(text=f"до 20 минут ({quick_count})", callback_data="category:special:quick"))
+        buttons.append(InlineKeyboardButton(text=f"⚡ до 20 минут ({quick_count})", callback_data="category:special:quick"))
 
     hard_count = sum(1 for recipe in recipes if is_hard(recipe))
     if hard_count:
-        buttons.append(InlineKeyboardButton(text=f"посложнее ({hard_count})", callback_data="category:special:hard"))
+        buttons.append(InlineKeyboardButton(text=f"🍲 посложнее ({hard_count})", callback_data="category:special:hard"))
 
     photo_count = sum(1 for recipe in recipes if isinstance(recipe.get("image"), str))
     if photo_count:
-        buttons.append(InlineKeyboardButton(text=f"с фото ({photo_count})", callback_data="category:special:photo"))
+        buttons.append(InlineKeyboardButton(text=f"📸 с фото ({photo_count})", callback_data="category:special:photo"))
 
     protein_count = sum(1 for recipe in recipes if (nutrition_value(recipe, "protein") or 0) >= 20)
     if protein_count:
-        buttons.append(InlineKeyboardButton(text=f"белка побольше ({protein_count})", callback_data="category:special:protein"))
+        buttons.append(InlineKeyboardButton(text=f"💪 белка побольше ({protein_count})", callback_data="category:special:protein"))
 
     return InlineKeyboardMarkup(inline_keyboard=chunk_buttons(buttons))
 
@@ -1569,7 +1619,7 @@ def place_filters_keyboard(places: list[dict[str, Any]], user_id: int | None) ->
     favorite_place_ids = favorite_ids("places", user_id)
     buttons = [
         InlineKeyboardButton(
-            text=f"где Аня была ({sum(1 for place in places if place.get('status') == 'visited')})",
+            text=f"🫦 где Аня была ({sum(1 for place in places if place.get('status') == 'visited')})",
             callback_data="place_filter:status:visited",
         ),
         InlineKeyboardButton(
@@ -1612,7 +1662,7 @@ def place_status_keyboard(places: list[dict[str, Any]]) -> InlineKeyboardMarkup:
         inline_keyboard=[
             [
                 InlineKeyboardButton(
-                    text=f"где Аня была ({sum(1 for place in places if place.get('status') == 'visited')})",
+                    text=f"🫦 где Аня была ({sum(1 for place in places if place.get('status') == 'visited')})",
                     callback_data="place_filter:status:visited",
                 )
             ],
@@ -1652,7 +1702,7 @@ def metro_filter_values(places: list[dict[str, Any]]) -> list[str]:
 def place_metro_keyboard(places: list[dict[str, Any]]) -> InlineKeyboardMarkup:
     buttons = [
         InlineKeyboardButton(
-            text=f"{metro} ({sum(1 for place in places if metro in place.get('metro', []))})",
+            text=f"{metro_label(metro)} ({sum(1 for place in places if metro in place.get('metro', []))})",
             callback_data=f"place_filter:metro:{index}",
         )
         for index, metro in enumerate(metro_filter_values(places))
@@ -2199,7 +2249,15 @@ async def handle_dad_password(message: Message, state: FSMContext) -> None:
 
     if normalize(message.text).strip() != DAD_PASSWORD:
         await state.clear()
-        await message.answer("доступ закрыт.", reply_markup=cooking_keyboard())
+        denied_photo = BASE_DIR / DAD_DENIED_PHOTO
+        if denied_photo.exists():
+            await message.answer_photo(
+                photo=FSInputFile(denied_photo),
+                caption="ты не Сережа Евгеньевич не надо врать.",
+                reply_markup=cooking_keyboard(),
+            )
+        else:
+            await message.answer("ты не Сережа Евгеньевич не надо врать.", reply_markup=cooking_keyboard())
         return
 
     await state.update_data(dad_authorized=True)
@@ -2519,7 +2577,7 @@ async def handle_place_filter_group(callback: CallbackQuery) -> None:
             await callback.message.answer("выбери формат места:", reply_markup=place_type_keyboard(places))
             return
         if group == "metro":
-            await callback.message.answer("выбери метро:", reply_markup=place_metro_keyboard(places))
+            await callback.message.answer("выбери метро и цвет ветки:", reply_markup=place_metro_keyboard(places))
             return
 
         await callback.message.answer("как хочешь отфильтровать места?", reply_markup=place_filter_home_keyboard())
@@ -2549,7 +2607,7 @@ async def handle_place_filter(callback: CallbackQuery, state: FSMContext) -> Non
         metros = metro_filter_values(places)
         metro = metros[int(index_text)] if index_text.isdigit() and int(index_text) < len(metros) else ""
         filtered_places = [place for place in places if metro and metro in place.get("metro", [])]
-        title = f"метро {metro}" if metro else "метро"
+        title = f"метро {metro_label(metro)}" if metro else "метро"
     elif data.startswith("type:"):
         place_type = data.removeprefix("type:")
         filtered_places = [place for place in places if place_has_type(place, place_type)]

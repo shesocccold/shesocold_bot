@@ -4,11 +4,22 @@
     "title": "Мама Варит Кофе",
     "city": "Москва",
     "address": "ул. Покровка, 8",
-    "metro": ["Китай-город", "Чистые пруды"],
-    "types": ["coffee", "cafe"],
+    "metro": [
+      "Китай-город",
+      "Чистые пруды"
+    ],
+    "types": [
+      "coffee",
+      "cafe"
+    ],
     "status": "wishlist",
     "favorite": false,
-    "tags": ["кофе", "кофейня", "покровка", "попить кофе"],
+    "tags": [
+      "кофе",
+      "кофейня",
+      "покровка",
+      "попить кофе"
+    ],
     "review": "",
     "photos": [],
     "url": "https://yandex.ru/maps/org/mama_varit_kofe/23809068059?si=6y0564f4kn3hzhkk27w307t5xr"
@@ -18,11 +29,22 @@
     "title": "Rébellion The Palace of Youth",
     "city": "Москва",
     "address": "Комсомольский просп., 24, стр. 1",
-    "metro": ["Фрунзенская"],
-    "types": ["restaurant", "bar", "cafe"],
+    "metro": [
+      "Фрунзенская"
+    ],
+    "types": [
+      "restaurant",
+      "bar",
+      "cafe"
+    ],
     "status": "wishlist",
     "favorite": false,
-    "tags": ["еда", "бар", "кофе", "встреча"],
+    "tags": [
+      "еда",
+      "бар",
+      "кофе",
+      "встреча"
+    ],
     "review": "",
     "photos": [],
     "url": "https://yandex.ru/maps/org/r_bellion_the_palace_of_youth/123670068993?si=6y0564f4kn3hzhkk27w307t5xr"
@@ -32,11 +54,22 @@
     "title": "DNA",
     "city": "Москва",
     "address": "Самокатная ул., 4, стр. 13",
-    "metro": ["Площадь Ильича", "Римская", "Курская"],
-    "types": ["coffee", "cafe"],
+    "metro": [
+      "Площадь Ильича",
+      "Римская",
+      "Курская"
+    ],
+    "types": [
+      "coffee",
+      "cafe"
+    ],
     "status": "wishlist",
     "favorite": false,
-    "tags": ["кофе", "кофейня", "самокатная"],
+    "tags": [
+      "кофе",
+      "кофейня",
+      "самокатная"
+    ],
     "review": "",
     "photos": [],
     "url": "https://yandex.ru/maps/org/dna/220107371386?si=6y0564f4kn3hzhkk27w307t5xr"
@@ -46,11 +79,20 @@
     "title": "Кароче Кофе",
     "city": "Москва",
     "address": "Старокирочный пер., 16/2с1",
-    "metro": ["Бауманская"],
-    "types": ["coffee", "cafe"],
+    "metro": [
+      "Бауманская"
+    ],
+    "types": [
+      "coffee",
+      "cafe"
+    ],
     "status": "wishlist",
     "favorite": false,
-    "tags": ["кофе", "кофейня", "кароче кофе"],
+    "tags": [
+      "кофе",
+      "кофейня",
+      "кароче кофе"
+    ],
     "review": "",
     "photos": [],
     "url": "https://yandex.ru/maps/org/karoche_kofe/32309746769?si=6y0564f4kn3hzhkk27w307t5xr"
@@ -60,11 +102,21 @@
     "title": "Автомойка by Veladora",
     "city": "Москва",
     "address": "Старосадский пер., 3, стр. 2",
-    "metro": ["Китай-город"],
-    "types": ["bar", "restaurant"],
+    "metro": [
+      "Китай-город"
+    ],
+    "types": [
+      "bar",
+      "restaurant"
+    ],
     "status": "wishlist",
     "favorite": false,
-    "tags": ["бар", "вайб", "коктейли", "veladora"],
+    "tags": [
+      "бар",
+      "вайб",
+      "коктейли",
+      "veladora"
+    ],
     "review": "вайб скорее как бар",
     "photos": [],
     "url": "https://yandex.ru/maps/org/avtomoyka_by_veladora/26076786625?si=6y0564f4kn3hzhkk27w307t5xr"
@@ -74,11 +126,22 @@
     "title": "Powerhouse",
     "city": "Москва",
     "address": "Гончарная ул., 7/4с1",
-    "metro": ["Таганская"],
-    "types": ["bar", "restaurant", "culture"],
+    "metro": [
+      "Таганская"
+    ],
+    "types": [
+      "bar",
+      "restaurant",
+      "culture"
+    ],
     "status": "wishlist",
     "favorite": false,
-    "tags": ["бар", "музыка", "культура", "вечер"],
+    "tags": [
+      "бар",
+      "музыка",
+      "культура",
+      "вечер"
+    ],
     "review": "",
     "photos": [],
     "url": "https://yandex.ru/maps/org/powerhouse/1141756662?si=6y0564f4kn3hzhkk27w307t5xr"
@@ -88,11 +151,21 @@
     "title": "Restaurant by Deep Fried Friends",
     "city": "Москва",
     "address": "Яузская ул., 10/2с4",
-    "metro": ["Китай-город", "Таганская"],
-    "types": ["restaurant", "bar"],
+    "metro": [
+      "Китай-город",
+      "Таганская"
+    ],
+    "types": [
+      "restaurant",
+      "bar"
+    ],
     "status": "wishlist",
     "favorite": false,
-    "tags": ["ресторан", "ужин", "бар"],
+    "tags": [
+      "ресторан",
+      "ужин",
+      "бар"
+    ],
     "review": "",
     "photos": [],
     "url": "https://yandex.ru/maps/org/restaurant_by_deep_fried_friends/121008180091?si=6y0564f4kn3hzhkk27w307t5xr"
@@ -102,11 +175,21 @@
     "title": "Техникум",
     "city": "Москва",
     "address": "",
-    "metro": ["Театральная", "Охотный Ряд"],
-    "types": ["restaurant", "cafe"],
+    "metro": [
+      "Театральная",
+      "Охотный Ряд"
+    ],
+    "types": [
+      "restaurant",
+      "cafe"
+    ],
     "status": "wishlist",
     "favorite": false,
-    "tags": ["ресторан", "кафе", "еда"],
+    "tags": [
+      "ресторан",
+      "кафе",
+      "еда"
+    ],
     "review": "",
     "photos": [],
     "url": "https://yandex.ru/maps/org/tehnikum/84512652581?si=6y0564f4kn3hzhkk27w307t5xr"
@@ -116,11 +199,20 @@
     "title": "0.36 kebab",
     "city": "Москва",
     "address": "",
-    "metro": [],
-    "types": ["kebab", "restaurant"],
+    "metro": [
+      "Китай-город"
+    ],
+    "types": [
+      "kebab",
+      "restaurant"
+    ],
     "status": "wishlist",
     "favorite": false,
-    "tags": ["кебаб", "еда", "быстро"],
+    "tags": [
+      "кебаб",
+      "еда",
+      "быстро"
+    ],
     "review": "",
     "photos": [],
     "url": "https://yandex.ru/maps/org/36_kebab/206893591933?si=6y0564f4kn3hzhkk27w307t5xr"
@@ -130,11 +222,20 @@
     "title": "Underdog",
     "city": "Москва",
     "address": "",
-    "metro": ["Китай-город"],
-    "types": ["bar", "restaurant"],
+    "metro": [
+      "Китай-город"
+    ],
+    "types": [
+      "bar",
+      "restaurant"
+    ],
     "status": "wishlist",
     "favorite": false,
-    "tags": ["бар", "еда", "вечер"],
+    "tags": [
+      "бар",
+      "еда",
+      "вечер"
+    ],
     "review": "",
     "photos": [],
     "url": "https://yandex.ru/maps/org/underdog/181544007639?si=6y0564f4kn3hzhkk27w307t5xr"
@@ -144,11 +245,22 @@
     "title": "Eggsellent",
     "city": "Москва",
     "address": "",
-    "metro": [],
-    "types": ["brunch", "cafe"],
+    "metro": [
+      "Маяковская",
+      "Тверская",
+      "Пушкинская"
+    ],
+    "types": [
+      "brunch",
+      "cafe"
+    ],
     "status": "wishlist",
     "favorite": false,
-    "tags": ["завтрак", "бранч", "яйца"],
+    "tags": [
+      "завтрак",
+      "бранч",
+      "яйца"
+    ],
     "review": "",
     "photos": [],
     "url": "https://yandex.ru/maps/org/eggsellent/129676436182si=6y0564f4kn3hzhkk27w307t5xr"
@@ -158,11 +270,21 @@
     "title": "Cream Soda",
     "city": "Москва",
     "address": "",
-    "metro": [],
-    "types": ["coffee", "cafe"],
+    "metro": [
+      "Чистые пруды",
+      "Тургеневская"
+    ],
+    "types": [
+      "coffee",
+      "cafe"
+    ],
     "status": "wishlist",
     "favorite": false,
-    "tags": ["кофе", "десерт", "кафе"],
+    "tags": [
+      "кофе",
+      "десерт",
+      "кафе"
+    ],
     "review": "",
     "photos": [],
     "url": "https://yandex.ru/maps/org/cream_soda/116589370357?si=6y0564f4kn3hzhkk27w307t5xr"
@@ -172,11 +294,20 @@
     "title": "Культурный код",
     "city": "Москва",
     "address": "",
-    "metro": [],
-    "types": ["culture", "cafe"],
+    "metro": [
+      "Китай-город"
+    ],
+    "types": [
+      "culture",
+      "cafe"
+    ],
     "status": "wishlist",
     "favorite": false,
-    "tags": ["культурное", "кафе", "место"],
+    "tags": [
+      "культурное",
+      "кафе",
+      "место"
+    ],
     "review": "",
     "photos": [],
     "url": "https://yandex.ru/maps/org/kulturny_kod/119222016554?si=6y0564f4kn3hzhkk27w307t5xr"
@@ -186,11 +317,19 @@
     "title": "Аэроплан",
     "city": "Москва",
     "address": "",
-    "metro": [],
-    "types": ["coffee", "cafe"],
+    "metro": [
+      "Чистые пруды"
+    ],
+    "types": [
+      "coffee",
+      "cafe"
+    ],
     "status": "wishlist",
     "favorite": false,
-    "tags": ["кофе", "кафе"],
+    "tags": [
+      "кофе",
+      "кафе"
+    ],
     "review": "",
     "photos": [],
     "url": "https://yandex.ru/maps/org/aeroplan/78369931480?si=6y0564f4kn3hzhkk27w307t5xr"
@@ -200,11 +339,19 @@
     "title": "Finch",
     "city": "Москва",
     "address": "",
-    "metro": [],
-    "types": ["coffee", "cafe"],
+    "metro": [
+      "Маяковская"
+    ],
+    "types": [
+      "coffee",
+      "cafe"
+    ],
     "status": "wishlist",
     "favorite": false,
-    "tags": ["кофе", "кафе"],
+    "tags": [
+      "кофе",
+      "кафе"
+    ],
     "review": "",
     "photos": [],
     "url": "https://yandex.ru/maps/org/finch/81031185697?si=6y0564f4kn3hzhkk27w307t5xr"
@@ -214,11 +361,20 @@
     "title": "Qaroche Coffee",
     "city": "Москва",
     "address": "",
-    "metro": [],
-    "types": ["coffee", "cafe"],
+    "metro": [
+      "Бауманская"
+    ],
+    "types": [
+      "coffee",
+      "cafe"
+    ],
     "status": "wishlist",
     "favorite": false,
-    "tags": ["кофе", "кофейня", "кароче кофе"],
+    "tags": [
+      "кофе",
+      "кофейня",
+      "кароче кофе"
+    ],
     "review": "",
     "photos": [],
     "url": "https://yandex.ru/maps/-/CHVA5FOW"
@@ -228,11 +384,22 @@
     "title": "Senti Menti",
     "city": "Москва",
     "address": "",
-    "metro": [],
-    "types": ["restaurant", "cafe"],
+    "metro": [
+      "Тверская",
+      "Пушкинская",
+      "Чеховская"
+    ],
+    "types": [
+      "restaurant",
+      "cafe"
+    ],
     "status": "wishlist",
     "favorite": false,
-    "tags": ["ресторан", "кафе", "еда"],
+    "tags": [
+      "ресторан",
+      "кафе",
+      "еда"
+    ],
     "review": "",
     "photos": [],
     "url": "https://yandex.ru/maps/org/senti_menti/23144937801?si=6y0564f4kn3hzhkk27w307t5xr"
@@ -242,11 +409,22 @@
     "title": "Jinju",
     "city": "Москва",
     "address": "",
-    "metro": [],
-    "types": ["asian", "restaurant"],
+    "metro": [
+      "Сретенский бульвар",
+      "Тургеневская",
+      "Чистые пруды"
+    ],
+    "types": [
+      "asian",
+      "restaurant"
+    ],
     "status": "wishlist",
     "favorite": false,
-    "tags": ["корейское", "азиатское", "еда"],
+    "tags": [
+      "корейское",
+      "азиатское",
+      "еда"
+    ],
     "review": "",
     "photos": [],
     "url": "https://yandex.ru/maps/org/jinju/17002537733?si=6y0564f4kn3hzhkk27w307t5xr"
@@ -256,11 +434,20 @@
     "title": "Masa Madre",
     "city": "Москва",
     "address": "",
-    "metro": [],
-    "types": ["restaurant", "cafe"],
+    "metro": [
+      "Третьяковская",
+      "Новокузнецкая"
+    ],
+    "types": [
+      "restaurant",
+      "cafe"
+    ],
     "status": "wishlist",
     "favorite": false,
-    "tags": ["ресторан", "еда"],
+    "tags": [
+      "ресторан",
+      "еда"
+    ],
     "review": "",
     "photos": [],
     "url": "https://yandex.ru/maps/org/masa_madre/149289437157?si=6y0564f4kn3hzhkk27w307t5xr"
@@ -270,11 +457,21 @@
     "title": "Tabi",
     "city": "Москва",
     "address": "",
-    "metro": [],
-    "types": ["asian", "restaurant"],
+    "metro": [
+      "Трубная",
+      "Цветной бульвар"
+    ],
+    "types": [
+      "asian",
+      "restaurant"
+    ],
     "status": "wishlist",
     "favorite": false,
-    "tags": ["азиатское", "ресторан", "еда"],
+    "tags": [
+      "азиатское",
+      "ресторан",
+      "еда"
+    ],
     "review": "",
     "photos": [],
     "url": "https://yandex.ru/maps/org/tabi/239643538957?si=6y0564f4kn3hzhkk27w307t5xr"
@@ -284,11 +481,22 @@
     "title": "Found",
     "city": "Москва",
     "address": "",
-    "metro": [],
-    "types": ["pizzeria", "record_store", "culture"],
+    "metro": [
+      "Курская",
+      "Чкаловская"
+    ],
+    "types": [
+      "pizzeria",
+      "record_store",
+      "culture"
+    ],
     "status": "wishlist",
     "favorite": false,
-    "tags": ["пицца", "пластинки", "музыка"],
+    "tags": [
+      "пицца",
+      "пластинки",
+      "музыка"
+    ],
     "review": "",
     "photos": [],
     "url": "https://yandex.ru/maps/org/found_record_store_pizzeria/211708294056?si=6y0564f4kn3hzhkk27w307t5xr"
@@ -298,11 +506,22 @@
     "title": "Лолита",
     "city": "Москва",
     "address": "",
-    "metro": [],
-    "types": ["restaurant", "bar"],
+    "metro": [
+      "Арбатская",
+      "Охотный Ряд"
+    ],
+    "types": [
+      "restaurant",
+      "bar"
+    ],
     "status": "visited",
     "favorite": true,
-    "tags": ["ресторан", "бар", "ужин", "было хорошо"],
+    "tags": [
+      "ресторан",
+      "бар",
+      "ужин",
+      "было хорошо"
+    ],
     "review": "была, было хорошо и даже очень хорошо",
     "photos": [],
     "url": "https://yandex.ru/maps/org/lolita/155873035913?si=6y0564f4kn3hzhkk27w307t5xr"
@@ -312,11 +531,24 @@
     "title": "Дом культур",
     "city": "Москва",
     "address": "",
-    "metro": ["Сретенский бульвар", "Тургеневская", "Чистые пруды"],
-    "types": ["restaurant", "bar", "culture"],
+    "metro": [
+      "Сретенский бульвар",
+      "Тургеневская",
+      "Чистые пруды"
+    ],
+    "types": [
+      "restaurant",
+      "bar",
+      "culture"
+    ],
     "status": "visited",
     "favorite": true,
-    "tags": ["ресторан", "бар", "культура", "было хорошо"],
+    "tags": [
+      "ресторан",
+      "бар",
+      "культура",
+      "было хорошо"
+    ],
     "review": "была, было хорошо и даже очень хорошо",
     "photos": [],
     "url": "https://yandex.ru/maps/org/dom_kultur/131157051825?si=6y0564f4kn3hzhkk27w307t5xr"
@@ -326,11 +558,24 @@
     "title": "Screpka",
     "city": "Москва",
     "address": "",
-    "metro": [],
-    "types": ["coffee", "cafe"],
+    "metro": [
+      "Сретенский бульвар",
+      "Тургеневская",
+      "Чистые пруды"
+    ],
+    "types": [
+      "coffee",
+      "cafe"
+    ],
     "status": "visited",
     "favorite": true,
-    "tags": ["кофе", "кафе", "skrepka", "screpka", "было хорошо"],
+    "tags": [
+      "кофе",
+      "кафе",
+      "skrepka",
+      "screpka",
+      "было хорошо"
+    ],
     "review": "была, было хорошо и даже очень хорошо",
     "photos": [],
     "url": "https://yandex.ru/maps/org/skrepka/101045871600?si=6y0564f4kn3hzhkk27w307t5xr"
@@ -340,11 +585,22 @@
     "title": "From Berlin",
     "city": "Москва",
     "address": "",
-    "metro": [],
-    "types": ["cafe", "restaurant"],
+    "metro": [
+      "Сретенский бульвар",
+      "Тургеневская",
+      "Чистые пруды"
+    ],
+    "types": [
+      "cafe",
+      "restaurant"
+    ],
     "status": "visited",
     "favorite": true,
-    "tags": ["кафе", "еда", "было хорошо"],
+    "tags": [
+      "кафе",
+      "еда",
+      "было хорошо"
+    ],
     "review": "была, было хорошо и даже очень хорошо",
     "photos": [],
     "url": "https://yandex.ru/maps/org/from_berlin/24172390594?si=6y0564f4kn3hzhkk27w307t5xr"
@@ -354,11 +610,22 @@
     "title": "Zoe",
     "city": "Москва",
     "address": "",
-    "metro": [],
-    "types": ["restaurant", "cafe"],
+    "metro": [
+      "Трубная",
+      "Чеховская",
+      "Пушкинская"
+    ],
+    "types": [
+      "restaurant",
+      "cafe"
+    ],
     "status": "visited",
     "favorite": true,
-    "tags": ["ресторан", "кафе", "было хорошо"],
+    "tags": [
+      "ресторан",
+      "кафе",
+      "было хорошо"
+    ],
     "review": "была, было хорошо и даже очень хорошо",
     "photos": [],
     "url": "https://yandex.ru/maps/org/zoye/98910481943?si=6y0564f4kn3hzhkk27w307t5xr"
@@ -368,11 +635,22 @@
     "title": "Wu Shu",
     "city": "Москва",
     "address": "",
-    "metro": [],
-    "types": ["asian", "restaurant"],
+    "metro": [
+      "Новослободская",
+      "Менделеевская"
+    ],
+    "types": [
+      "asian",
+      "restaurant"
+    ],
     "status": "visited",
     "favorite": true,
-    "tags": ["азиатское", "китайское", "ресторан", "было хорошо"],
+    "tags": [
+      "азиатское",
+      "китайское",
+      "ресторан",
+      "было хорошо"
+    ],
     "review": "была, было хорошо и даже очень хорошо",
     "photos": [],
     "url": "https://yandex.ru/maps/org/wu_shu/102806541192?si=6y0564f4kn3hzhkk27w307t5xr"
@@ -382,11 +660,21 @@
     "title": "8 шаров",
     "city": "Москва",
     "address": "",
-    "metro": [],
-    "types": ["bar", "cafe"],
+    "metro": [
+      "Трубная",
+      "Цветной бульвар"
+    ],
+    "types": [
+      "bar",
+      "cafe"
+    ],
     "status": "visited",
     "favorite": true,
-    "tags": ["бар", "вечер", "было хорошо"],
+    "tags": [
+      "бар",
+      "вечер",
+      "было хорошо"
+    ],
     "review": "была, было хорошо и даже очень хорошо",
     "photos": [],
     "url": "https://yandex.ru/maps/org/8_sharov/210903462836?si=6y0564f4kn3hzhkk27w307t5xr"
@@ -396,11 +684,23 @@
     "title": "Dizengof 99",
     "city": "Москва",
     "address": "",
-    "metro": [],
-    "types": ["restaurant", "cafe", "brunch"],
+    "metro": [
+      "Арбатская",
+      "Охотный Ряд"
+    ],
+    "types": [
+      "restaurant",
+      "cafe",
+      "brunch"
+    ],
     "status": "visited",
     "favorite": true,
-    "tags": ["ресторан", "бранч", "еда", "было хорошо"],
+    "tags": [
+      "ресторан",
+      "бранч",
+      "еда",
+      "было хорошо"
+    ],
     "review": "была, было хорошо и даже очень хорошо",
     "photos": [],
     "url": "https://yandex.ru/maps/org/dizengof_99/187634822305?si=6y0564f4kn3hzhkk27w307t5xr"
