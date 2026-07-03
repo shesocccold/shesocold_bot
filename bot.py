@@ -267,6 +267,7 @@ class DadState(StatesGroup):
 
 class AdminState(StatesGroup):
     waiting_for_place = State()
+    waiting_for_recipe = State()
     waiting_for_map_url = State()
     waiting_for_place_photo = State()
 
@@ -289,6 +290,10 @@ def is_admin_user(user: Any) -> bool:
     return bool(username and username in usernames)
 
 
+def is_back_intent(text: str) -> bool:
+    return compact_text(text) in {"назад", "главное", "главное меню", "меню", "домой"}
+
+
 def main_keyboard(user: Any = None) -> ReplyKeyboardMarkup:
     keyboard = [
         [KeyboardButton(text=COOKING_BUTTON), KeyboardButton(text=PLACES_BUTTON)],
@@ -301,7 +306,7 @@ def main_keyboard(user: Any = None) -> ReplyKeyboardMarkup:
     return ReplyKeyboardMarkup(
         keyboard=keyboard,
         resize_keyboard=True,
-        input_field_placeholder="выбери, что хочешь",
+        input_field_placeholder="напиши запрос или выбери кнопку",
     )
 
 
@@ -313,7 +318,7 @@ def cooking_keyboard() -> ReplyKeyboardMarkup:
             [KeyboardButton(text=RECIPE_FAVORITES_BUTTON), KeyboardButton(text=BACK_BUTTON)],
         ],
         resize_keyboard=True,
-        input_field_placeholder="что сегодня делаем?",
+        input_field_placeholder="напиши запрос или выбери кнопку",
     )
 
 
@@ -326,7 +331,7 @@ def places_keyboard() -> ReplyKeyboardMarkup:
             [KeyboardButton(text=BACK_BUTTON)],
         ],
         resize_keyboard=True,
-        input_field_placeholder="куда идём?",
+        input_field_placeholder="напиши запрос или выбери кнопку",
     )
 
 
@@ -352,6 +357,11 @@ def all_menu_buttons() -> set[str]:
 
 
 async def route_menu_button(message: Message, state: FSMContext, text: str) -> bool:
+    if is_back_intent(text):
+        await state.set_state(None)
+        await handle_back(message, state)
+        return True
+
     if text not in all_menu_buttons():
         return False
 
@@ -384,11 +394,11 @@ async def route_menu_button(message: Message, state: FSMContext, text: str) -> b
     elif text == RANDOM_PLACE_BUTTON:
         await handle_random_place(message)
     elif text == PLACE_FAVORITES_BUTTON:
-        await handle_place_favorites(message)
+        await handle_place_favorites(message, state)
     elif text == VISITED_PLACES_BUTTON:
-        await handle_visited_places(message)
+        await handle_visited_places(message, state)
     elif text == WISHLIST_PLACES_BUTTON:
-        await handle_wishlist_places(message)
+        await handle_wishlist_places(message, state)
 
     return True
 
@@ -432,6 +442,10 @@ def load_places() -> list[dict[str, Any]]:
 
 def save_places(places: list[dict[str, Any]]) -> None:
     write_json(PLACES_PATH, places)
+
+
+def save_recipes(recipes: list[dict[str, Any]]) -> None:
+    write_json(RECIPES_PATH, recipes)
 
 
 def load_settings() -> dict[str, Any]:
@@ -993,9 +1007,44 @@ def recipe_results_keyboard(recipes: list[dict[str, Any]], page: int = 0) -> Inl
     return InlineKeyboardMarkup(inline_keyboard=keyboard)
 
 
+def place_results_keyboard(places: list[dict[str, Any]], page: int = 0, back_callback: str = "place_group:home") -> InlineKeyboardMarkup:
+    page = clamp_page(page, len(places), PLACE_RESULT_LIMIT)
+    start = page * PLACE_RESULT_LIMIT
+    end = start + PLACE_RESULT_LIMIT
+    keyboard = [
+        [InlineKeyboardButton(text=place.get("title", "без названия"), callback_data=f"place:{item_id(place)}")]
+        for place in places[start:end]
+    ]
+
+    nav: list[InlineKeyboardButton] = []
+    if page > 0:
+        nav.append(InlineKeyboardButton(text="← назад", callback_data=f"place_results:{page - 1}"))
+    if end < len(places):
+        nav.append(InlineKeyboardButton(text="дальше →", callback_data=f"place_results:{page + 1}"))
+    if nav:
+        keyboard.append(nav)
+
+    keyboard.append([InlineKeyboardButton(text="назад к фильтрам", callback_data=back_callback)])
+    return InlineKeyboardMarkup(inline_keyboard=keyboard)
+
+
 async def save_recipe_result_ids(state: FSMContext | None, recipes: list[dict[str, Any]]) -> None:
     if state is not None:
         await state.update_data(recipe_result_ids=[item_id(recipe) for recipe in recipes])
+
+
+async def save_place_result_ids(
+    state: FSMContext | None,
+    places: list[dict[str, Any]],
+    title: str = "места",
+    back_callback: str = "place_group:home",
+) -> None:
+    if state is not None:
+        await state.update_data(
+            place_result_ids=[item_id(place) for place in places],
+            place_result_title=title,
+            place_result_back_callback=back_callback,
+        )
 
 
 async def send_recipe_result_list(
@@ -1338,6 +1387,8 @@ async def send_place_results(
     places: list[dict[str, Any]],
     filters: dict[str, Any],
     user_id: int | None,
+    state: FSMContext | None = None,
+    page: int = 0,
 ) -> None:
     found = apply_place_filters(places, filters)
     if filters.get("favorite"):
@@ -1354,7 +1405,7 @@ async def send_place_results(
         return
 
     if not found:
-        await message.answer("ничего не нашла 🥲 попробуй другой фильтр", reply_markup=places_keyboard())
+        await message.answer("не нашла мест под это. попробуй другой запрос или выбери фильтр через «все места».", reply_markup=places_keyboard())
         return
 
     if filters.get("random"):
@@ -1363,16 +1414,35 @@ async def send_place_results(
         return
 
     summary = place_filter_summary(filters)
-    header = f"нашла мест: {len(found)}"
+    title = f"нашла мест: {len(found)}"
     if summary:
-        header += f"\nфильтр: {summary}"
-    if len(found) > PLACE_RESULT_LIMIT:
-        header += f"\nпоказываю первые {PLACE_RESULT_LIMIT}; можно уточнить метро, тип или статус"
+        title += f"\nфильтр: {summary}"
 
+    await send_place_result_list(message, found, state, title, page)
+
+
+async def send_place_result_list(
+    message: Message,
+    places: list[dict[str, Any]],
+    state: FSMContext | None,
+    title: str,
+    page: int = 0,
+    back_callback: str = "place_group:home",
+) -> None:
+    if not places:
+        await message.answer("тут пока пусто", reply_markup=places_keyboard())
+        return
+
+    page = clamp_page(page, len(places), PLACE_RESULT_LIMIT)
+    header = title
+    if len(places) > PLACE_RESULT_LIMIT:
+        header += f"\nстраница {page + 1}/{page_count(len(places), PLACE_RESULT_LIMIT)}"
+
+    await save_place_result_ids(state, places, title, back_callback)
     await message.answer(header, reply_markup=places_keyboard())
     await message.answer(
         "выбери место:",
-        reply_markup=place_list_keyboard(found[:PLACE_RESULT_LIMIT]),
+        reply_markup=place_results_keyboard(places, page, back_callback),
     )
 
 
@@ -1610,6 +1680,7 @@ def admin_keyboard() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(
         inline_keyboard=[
             [InlineKeyboardButton(text="➕ добавить место", callback_data="admin:add_place")],
+            [InlineKeyboardButton(text="🍳 добавить рецепт", callback_data="admin:add_recipe")],
             [InlineKeyboardButton(text="🖼 добавить фото к месту", callback_data="admin:add_photo")],
             [InlineKeyboardButton(text="🗺 заменить ссылку карты", callback_data="admin:set_map")],
             [InlineKeyboardButton(text="🪪 мой telegram id", callback_data="admin:whoami")],
@@ -1677,6 +1748,111 @@ def normalize_admin_types(value: str) -> list[str]:
             result.append(matched_type)
 
     return result or ["cafe"]
+
+
+def split_admin_values(value: str) -> list[str]:
+    return [chunk.strip() for chunk in re.split(r"[,;|]", value) if chunk.strip()]
+
+
+def split_admin_steps(value: str) -> list[str]:
+    return [chunk.strip() for chunk in re.split(r"[;|]", value) if chunk.strip()]
+
+
+def parse_admin_number(value: str) -> int | float | None:
+    try:
+        number = float(value.replace(",", ".").strip())
+    except ValueError:
+        return None
+
+    return int(number) if number.is_integer() else number
+
+
+def parse_recipe_fields(text: str) -> dict[str, str]:
+    aliases = {
+        "название": "title",
+        "имя": "title",
+        "категория": "category",
+        "теги": "tags",
+        "ингредиенты": "ingredients",
+        "шаги": "steps",
+        "как готовить": "steps",
+        "время": "time_minutes",
+        "минуты": "time_minutes",
+        "ккал": "calories",
+        "калории": "calories",
+        "белки": "protein",
+        "жиры": "fat",
+        "углеводы": "carbs",
+        "фото": "image",
+        "картинка": "image",
+        "папа": "dad",
+        "папин": "dad",
+        "страна": "country",
+        "кластер": "dad_cluster",
+    }
+    fields: dict[str, str] = {}
+
+    for line in text.splitlines():
+        if ":" not in line:
+            continue
+        key, value = line.split(":", 1)
+        normalized_key = normalize(key).strip()
+        field = aliases.get(normalized_key)
+        if field and value.strip():
+            fields[field] = value.strip()
+
+    return fields
+
+
+def build_admin_recipe(text: str) -> tuple[dict[str, Any] | None, str]:
+    fields = parse_recipe_fields(text)
+    title = fields.get("title", "").strip()
+
+    if not title:
+        return None, "не вижу название. добавь строку `название: ...`"
+
+    tags = split_admin_values(fields.get("tags", ""))
+    category = fields.get("category", "разное").strip() or "разное"
+    if category not in tags:
+        tags.append(category)
+
+    is_for_dad = any(word in normalize(fields.get("dad", "")) for word in ("да", "пап", "true", "1", "yes"))
+    if is_for_dad and "папа" not in tags:
+        tags.append("папа")
+
+    nutrition = {
+        key: value
+        for key, value in {
+            "calories": parse_admin_number(fields.get("calories", "")),
+            "protein": parse_admin_number(fields.get("protein", "")),
+            "fat": parse_admin_number(fields.get("fat", "")),
+            "carbs": parse_admin_number(fields.get("carbs", "")),
+        }.items()
+        if value is not None
+    }
+
+    recipe: dict[str, Any] = {
+        "id": admin_place_id(title, fields.get("category", "")),
+        "title": title,
+        "category": category,
+        "tags": tags,
+        "ingredients": split_admin_values(fields.get("ingredients", "")),
+        "steps": split_admin_steps(fields.get("steps", "")),
+        "time_minutes": parse_admin_number(fields.get("time_minutes", "")) or 0,
+        "is_for_dad": is_for_dad,
+    }
+
+    if nutrition:
+        recipe["nutrition"] = nutrition
+    if fields.get("image"):
+        recipe["image"] = fields["image"]
+    if fields.get("country"):
+        recipe["country"] = fields["country"]
+    if is_for_dad:
+        cluster = normalize(fields.get("dad_cluster", "classic")).strip() or "classic"
+        recipe["dad_cluster"] = cluster if cluster in DAD_CLUSTER_LABELS else "classic"
+
+    return recipe, ""
 
 
 def build_admin_place(text: str) -> tuple[dict[str, Any] | None, str]:
@@ -1758,9 +1934,9 @@ async def handle_start(message: Message, state: FSMContext) -> None:
             print(f"не удалось отправить стартовый стикер: {error}")
 
     await message.answer(
-        "привет, это Анин shesocold-бот 🍳📍\n\n"
-        "тут можно смотреть рецепты, места, любимое и Анину карту. "
-        "выбирай в меню, что хочешь, а если что-то бесит или хочется добавить — я жду обратной связи.",
+        "оставь надежду, всяк сюда входящий.\n\n"
+        "привет, это Анин бот. он помогает ей держать под рукой заведения, рецепты и всякие любимые штуки. "
+        "может, и тебе я буду полезен.",
         reply_markup=main_keyboard(message.from_user),
     )
 
@@ -1768,7 +1944,11 @@ async def handle_start(message: Message, state: FSMContext) -> None:
 @router.message(F.text == BACK_BUTTON)
 async def handle_back(message: Message, state: FSMContext) -> None:
     await state.set_state(None)
-    await message.answer("выбери, что хочешь", reply_markup=main_keyboard(message.from_user))
+    data = await state.get_data()
+    back_count = int(data.get("back_count", 0)) + 1
+    await state.update_data(back_count=back_count)
+    text = "выбери, что хочешь" if back_count == 1 else "путник, ты вернулся назад. выбирай, что дальше."
+    await message.answer(text, reply_markup=main_keyboard(message.from_user))
 
 
 @router.message(F.text == COOKING_BUTTON)
@@ -1797,7 +1977,7 @@ async def handle_admin_home(message: Message, state: FSMContext) -> None:
 
     await message.answer(
         "админка Ани.\n\n"
-        "что делаем: добавляем место, меняем ссылку карты, прикручиваем фото или достаём file_id стикера.",
+        "что делаем: добавляем место или рецепт, меняем ссылку карты, прикручиваем фото или достаём file_id стикера.",
         reply_markup=admin_keyboard(),
     )
 
@@ -1822,6 +2002,24 @@ async def handle_admin_callback(callback: CallbackQuery, state: FSMContext) -> N
                 "тип: кофе, кафе\n"
                 "метро: Китай-город\n"
                 "отзыв: вайб на спокойный кофе"
+            )
+            return
+
+        if action == "add_recipe":
+            await state.set_state(AdminState.waiting_for_recipe)
+            await callback.message.answer(
+                "пришли рецепт вот так:\n\n"
+                "название: паста с томатами\n"
+                "категория: паста\n"
+                "теги: ужин, паста, томаты\n"
+                "ингредиенты: паста, томаты, чеснок, сыр\n"
+                "шаги: отварить пасту; обжарить чеснок и томаты; смешать всё с сыром\n"
+                "время: 20\n"
+                "ккал: 430\n"
+                "белки: 18\n"
+                "жиры: 16\n"
+                "углеводы: 58\n\n"
+                "если это папин омлет, добавь строку: папа: да"
             )
             return
 
@@ -1856,7 +2054,7 @@ async def handle_admin_callback(callback: CallbackQuery, state: FSMContext) -> N
     await answer_or_alert(callback, body)
 
 
-@router.message(AdminState.waiting_for_place)
+@router.message(AdminState.waiting_for_place, F.text)
 async def handle_admin_place_text(message: Message, state: FSMContext) -> None:
     if not is_admin_user(message.from_user):
         await state.clear()
@@ -1878,7 +2076,30 @@ async def handle_admin_place_text(message: Message, state: FSMContext) -> None:
     await message.answer(f"добавила место: {place['title']}", reply_markup=places_keyboard())
 
 
-@router.message(AdminState.waiting_for_map_url)
+@router.message(AdminState.waiting_for_recipe, F.text)
+async def handle_admin_recipe_text(message: Message, state: FSMContext) -> None:
+    if not is_admin_user(message.from_user):
+        await state.clear()
+        await message.answer("админка только для Ани.", reply_markup=main_keyboard(message.from_user))
+        return
+
+    if await route_menu_button(message, state, message.text or ""):
+        return
+
+    recipe, error = build_admin_recipe(message.text or "")
+    if recipe is None:
+        await message.answer(error)
+        return
+
+    recipes = load_recipes()
+    recipes.append(recipe)
+    save_recipes(recipes)
+    await state.set_state(None)
+    where = "в папины омлеты" if is_dad_recipe(recipe) else "в рецепты"
+    await message.answer(f"добавила {where}: {recipe['title']}", reply_markup=cooking_keyboard())
+
+
+@router.message(AdminState.waiting_for_map_url, F.text)
 async def handle_admin_map_url(message: Message, state: FSMContext) -> None:
     if not is_admin_user(message.from_user):
         await state.clear()
@@ -1936,6 +2157,20 @@ async def handle_admin_place_photo(message: Message, state: FSMContext, bot: Bot
     await message.answer(f"добавила фото к месту: {saved_place.get('title')}", reply_markup=places_keyboard())
 
 
+async def answer_sticker_file_id(message: Message) -> None:
+    if message.sticker is None:
+        return
+    await message.answer(
+        f"file_id стикера:\n`{message.sticker.file_id}`",
+        parse_mode="Markdown",
+    )
+
+
+@router.message(AdminState.waiting_for_place_photo, F.sticker)
+async def handle_admin_place_photo_sticker(message: Message) -> None:
+    await answer_sticker_file_id(message)
+
+
 @router.message(AdminState.waiting_for_place_photo)
 async def handle_admin_place_photo_wrong(message: Message) -> None:
     await message.answer("жду именно фото с подписью-названием места.")
@@ -1943,14 +2178,7 @@ async def handle_admin_place_photo_wrong(message: Message) -> None:
 
 @router.message(F.sticker)
 async def handle_sticker_id(message: Message) -> None:
-    if not is_admin_user(message.from_user):
-        await message.answer("стикер красивый, но я пока умею сохранять file_id только для Ани.")
-        return
-
-    await message.answer(
-        f"file_id стикера:\n`{message.sticker.file_id}`",
-        parse_mode="Markdown",
-    )
+    await answer_sticker_file_id(message)
 
 
 @router.message(F.text == DAD_BUTTON)
@@ -2066,7 +2294,7 @@ async def handle_random_place(message: Message) -> None:
 
 
 @router.message(F.text == PLACE_FAVORITES_BUTTON)
-async def handle_place_favorites(message: Message) -> None:
+async def handle_place_favorites(message: Message, state: FSMContext) -> None:
     places = load_places()
     ids = favorite_ids("places", message.from_user.id if message.from_user else None)
     found = [place for place in places if item_id(place) in ids or place.get("favorite") is True]
@@ -2075,28 +2303,28 @@ async def handle_place_favorites(message: Message) -> None:
         await message.answer("любимых мест пока нет. нажми ⭐ под местом, и оно появится тут.", reply_markup=places_keyboard())
         return
 
-    await message.answer(f"любимые места: {len(found)}", reply_markup=places_keyboard())
-    await message.answer("выбери место:", reply_markup=place_list_keyboard(found[:PLACE_RESULT_LIMIT]))
+    await send_place_result_list(message, found, state, f"любимые места: {len(found)}")
 
 
 @router.message(F.text == VISITED_PLACES_BUTTON)
-async def handle_visited_places(message: Message) -> None:
-    places = [place for place in load_places() if place.get("status") == "visited"]
+async def handle_visited_places(message: Message, state: FSMContext) -> None:
     await send_place_results(
         message,
         load_places(),
         {"status": "visited", "type": None, "city": None, "metro": None, "favorite": False, "has_photo": False, "random": False, "terms": []},
         message.from_user.id if message.from_user else None,
+        state,
     )
 
 
 @router.message(F.text == WISHLIST_PLACES_BUTTON)
-async def handle_wishlist_places(message: Message) -> None:
+async def handle_wishlist_places(message: Message, state: FSMContext) -> None:
     await send_place_results(
         message,
         load_places(),
         {"status": "wishlist", "type": None, "city": None, "metro": None, "favorite": False, "has_photo": False, "random": False, "terms": []},
         message.from_user.id if message.from_user else None,
+        state,
     )
 
 
@@ -2113,6 +2341,7 @@ async def handle_place_search_query(message: Message, state: FSMContext) -> None
         places,
         parse_place_filters(text, places),
         message.from_user.id if message.from_user else None,
+        state,
     )
 
 
@@ -2295,7 +2524,7 @@ async def handle_place_filter_group(callback: CallbackQuery) -> None:
 
 
 @router.callback_query(F.data.startswith("place_filter:"))
-async def handle_place_filter(callback: CallbackQuery) -> None:
+async def handle_place_filter(callback: CallbackQuery, state: FSMContext) -> None:
     places = load_places()
     data = (callback.data or "").removeprefix("place_filter:")
     user_id = callback.from_user.id if callback.from_user else None
@@ -2330,17 +2559,41 @@ async def handle_place_filter(callback: CallbackQuery) -> None:
             await callback.message.answer("тут пока пусто", reply_markup=places_keyboard())
             return
 
-        header = f"{title}: {len(filtered_places)}"
-        if len(filtered_places) > PLACE_RESULT_LIMIT:
-            header += f"\nпоказываю первые {PLACE_RESULT_LIMIT}; можно уточнить запрос словами"
-
-        await callback.message.answer(
-            header,
-            reply_markup=places_keyboard(),
+        await send_place_result_list(
+            callback.message,
+            filtered_places,
+            state,
+            f"{title}: {len(filtered_places)}",
+            back_callback="place_group:home",
         )
+
+    await answer_or_alert(callback, body)
+
+
+@router.callback_query(F.data.startswith("place_results:"))
+async def handle_place_results_page(callback: CallbackQuery, state: FSMContext) -> None:
+    try:
+        page = int((callback.data or "").removeprefix("place_results:"))
+    except ValueError:
+        page = 0
+
+    data = await state.get_data()
+    ids = data.get("place_result_ids", [])
+    title = str(data.get("place_result_title") or "места")
+    back_callback = str(data.get("place_result_back_callback") or "place_group:home")
+    places = load_places()
+    place_by_id = {item_id(place): place for place in places}
+    found = [place_by_id[place_id] for place_id in ids if place_id in place_by_id]
+
+    async def body() -> None:
+        if not found:
+            await callback.message.answer("список устарел, попробуй открыть места ещё раз", reply_markup=places_keyboard())
+            return
+
+        page_index = clamp_page(page, len(found), PLACE_RESULT_LIMIT)
         await callback.message.answer(
-            "выбери место:",
-            reply_markup=place_list_keyboard(filtered_places[:PLACE_RESULT_LIMIT], back_callback="place_group:home"),
+            f"{title}\nстраница {page_index + 1}/{page_count(len(found), PLACE_RESULT_LIMIT)}",
+            reply_markup=place_results_keyboard(found, page_index, back_callback),
         )
 
     await answer_or_alert(callback, body)
@@ -2404,8 +2657,7 @@ async def handle_favorites_callback(callback: CallbackQuery, state: FSMContext) 
         if not found:
             await callback.message.answer("любимых мест пока нет", reply_markup=places_keyboard())
             return
-        await callback.message.answer(f"любимые места: {len(found)}", reply_markup=places_keyboard())
-        await callback.message.answer("выбери место:", reply_markup=place_list_keyboard(found[:PLACE_RESULT_LIMIT]))
+        await send_place_result_list(callback.message, found, state, f"любимые места: {len(found)}")
 
     await answer_or_alert(callback, body)
 
@@ -2413,6 +2665,9 @@ async def handle_favorites_callback(callback: CallbackQuery, state: FSMContext) 
 @router.message(F.text)
 async def handle_smart_text(message: Message, state: FSMContext) -> None:
     text = message.text or ""
+    if await route_menu_button(message, state, text):
+        return
+
     recipes = await visible_recipes(state)
     places = load_places()
     normalized_text = normalize(text)
@@ -2446,7 +2701,7 @@ async def handle_smart_text(message: Message, state: FSMContext) -> None:
             await send_places_dashboard(message, user_id)
             return
 
-        await send_place_results(message, places, place_filters, user_id)
+        await send_place_results(message, places, place_filters, user_id, state)
         return
 
     await send_recipe_results(message, recipes, recipe_filters, user_id, state)
