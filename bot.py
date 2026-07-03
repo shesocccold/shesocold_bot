@@ -4,6 +4,7 @@ import json
 import os
 import random
 import re
+from html import escape
 from pathlib import Path
 from typing import Any, Callable
 
@@ -37,8 +38,8 @@ FAVORITES_BUTTON = "⭐ любимое"
 ADMIN_BUTTON = "⚙️ админка"
 BACK_BUTTON = "⬅️ назад"
 
-DAD_BUTTON = "🥚 папин раздел"
-DAD_BUTTON_ALIASES = {DAD_BUTTON, "🥚 папины омлеты"}
+DAD_BUTTON = "🍳 папин раздел"
+DAD_BUTTON_ALIASES = {DAD_BUTTON, "🥚 папин раздел", "🥚 папины омлеты"}
 RANDOM_BUTTON = "🎲 рандомный рецепт"
 SEARCH_BUTTON = "🔎 найти рецепт"
 ALL_BUTTON = "🧑‍🍳 все рецепты"
@@ -1404,28 +1405,26 @@ def format_place(place: dict[str, Any]) -> str:
     title = place.get("title", "без названия")
     types = place.get("types", [])
     metro = place.get("metro", [])
-    tags = place.get("tags", [])
     status = PLACE_STATUS_LABELS.get(str(place.get("status")), str(place.get("status") or "не указано"))
     review = str(place.get("review") or "").strip()
     url = str(place.get("url") or "").strip()
+    address = str(place.get("address") or "не указан")
+    city = str(place.get("city") or "не указан")
 
     type_text = ", ".join(PLACE_TYPE_LABELS.get(place_type, place_type) for place_type in types) if isinstance(types, list) else ""
     metro_text = ", ".join(metro_label(item) for item in metro) if isinstance(metro, list) and metro else "не указано"
-    tag_text = ", ".join(str(item) for item in tags) if isinstance(tags, list) and tags else ""
-    review_text = f"\nотзыв: {review}" if review else ""
-    tags_text = f"\nтеги: {tag_text}" if tag_text else ""
-    url_text = f"\n\nкарта: {url}" if url else ""
+    review_text = f"\nотзыв: {escape(review)}" if review else ""
+    map_text = f"\n<a href=\"{escape(url, quote=True)}\">место на Яндекс.Картах</a>" if url else ""
 
     return (
-        f"📍 {title}\n\n"
-        f"город: {place.get('city', 'не указан')}\n"
-        f"тип: {type_text or 'не указан'}\n"
-        f"статус: {status}\n"
-        f"метро: {metro_text}\n"
-        f"адрес: {place.get('address') or 'не указан'}"
+        f"📍 {escape(str(title))}\n\n"
+        f"город: {escape(city)}\n"
+        f"тип: {escape(type_text or 'не указан')}\n"
+        f"статус: {escape(status)}\n"
+        f"метро: {escape(metro_text)}\n"
+        f"адрес: {escape(address)}"
         f"{review_text}"
-        f"{tags_text}"
-        f"{url_text}"
+        f"{map_text}"
     )
 
 
@@ -1449,7 +1448,7 @@ async def send_place(message: Message, place: dict[str, Any], user_id: int | Non
                 if photo_path.exists():
                     await message.answer_photo(photo=FSInputFile(photo_path), caption=str(place.get("title", "место")))
 
-    await message.answer(format_place(place), reply_markup=place_actions_keyboard(place, user_id))
+    await message.answer(format_place(place), parse_mode="HTML", reply_markup=place_actions_keyboard(place, user_id))
 
 
 async def send_places_dashboard(message: Message, user_id: int | None = None) -> None:
