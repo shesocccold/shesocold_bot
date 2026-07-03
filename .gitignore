@@ -1,0 +1,10 @@
+.env
+favorites.json
+*.db
+*.sqlite
+*.sqlite3
+*.log
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/

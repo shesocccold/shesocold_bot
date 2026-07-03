@@ -1,0 +1,16 @@
+[Unit]
+Description=Shesocold Telegram bot
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=ubuntu
+WorkingDirectory=/home/ubuntu/shesocold_bot
+EnvironmentFile=/home/ubuntu/shesocold_bot/.env
+ExecStart=/home/ubuntu/shesocold_bot/.venv/bin/python /home/ubuntu/shesocold_bot/bot.py
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
