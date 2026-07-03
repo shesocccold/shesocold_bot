@@ -291,7 +291,17 @@ def is_admin_user(user: Any) -> bool:
 
 
 def is_back_intent(text: str) -> bool:
-    return compact_text(text) in {"назад", "главное", "главное меню", "меню", "домой"}
+    return compact_text(text) in {
+        "назад",
+        "главное",
+        "главная",
+        "главное меню",
+        "в главное",
+        "в главное меню",
+        "вернуться в главное меню",
+        "меню",
+        "домой",
+    }
 
 
 def main_keyboard(user: Any = None) -> ReplyKeyboardMarkup:
@@ -306,7 +316,7 @@ def main_keyboard(user: Any = None) -> ReplyKeyboardMarkup:
     return ReplyKeyboardMarkup(
         keyboard=keyboard,
         resize_keyboard=True,
-        input_field_placeholder="напиши запрос или выбери кнопку",
+        input_field_placeholder="бла бла бла",
     )
 
 
@@ -318,7 +328,7 @@ def cooking_keyboard() -> ReplyKeyboardMarkup:
             [KeyboardButton(text=RECIPE_FAVORITES_BUTTON), KeyboardButton(text=BACK_BUTTON)],
         ],
         resize_keyboard=True,
-        input_field_placeholder="напиши запрос или выбери кнопку",
+        input_field_placeholder="бла бла бла",
     )
 
 
@@ -331,7 +341,7 @@ def places_keyboard() -> ReplyKeyboardMarkup:
             [KeyboardButton(text=BACK_BUTTON)],
         ],
         resize_keyboard=True,
-        input_field_placeholder="напиши запрос или выбери кнопку",
+        input_field_placeholder="бла бла бла",
     )
 
 
@@ -1309,7 +1319,7 @@ def place_filter_summary(filters: dict[str, Any]) -> str:
     if filters.get("metro"):
         parts.append(f"метро {filters['metro']}")
     if filters.get("favorite"):
-        parts.append("любимое / стоит сходить")
+        parts.append("мои любимые")
     if filters.get("has_photo"):
         parts.append("с фото")
     if filters["terms"]:
@@ -1390,12 +1400,12 @@ async def send_place_results(
     state: FSMContext | None = None,
     page: int = 0,
 ) -> None:
-    found = apply_place_filters(places, filters)
-    if filters.get("favorite"):
+    search_filters = dict(filters)
+    favorite_requested = bool(search_filters.pop("favorite", False))
+    found = apply_place_filters(places, search_filters)
+    if favorite_requested:
         saved_ids = favorite_ids("places", user_id)
-        favorite_places = [place for place in places if item_id(place) in saved_ids or place.get("favorite") is True]
-        found_ids = {item_id(place) for place in found}
-        found.extend(place for place in favorite_places if item_id(place) not in found_ids)
+        found = [place for place in found if item_id(place) in saved_ids]
 
     if not has_place_filters(filters):
         await message.answer(
@@ -1556,7 +1566,7 @@ def filter_category(
 
 
 def place_filters_keyboard(places: list[dict[str, Any]], user_id: int | None) -> InlineKeyboardMarkup:
-    favorite_place_ids = {item_id(place) for place in places if place.get("favorite") is True} | favorite_ids("places", user_id)
+    favorite_place_ids = favorite_ids("places", user_id)
     buttons = [
         InlineKeyboardButton(
             text=f"где Аня была ({sum(1 for place in places if place.get('status') == 'visited')})",
@@ -1591,7 +1601,7 @@ def place_filter_home_keyboard() -> InlineKeyboardMarkup:
             [InlineKeyboardButton(text="по Аниным спискам", callback_data="place_group:status")],
             [InlineKeyboardButton(text="по формату места", callback_data="place_group:type")],
             [InlineKeyboardButton(text="по метро", callback_data="place_group:metro")],
-            [InlineKeyboardButton(text="любимые / рекомендации", callback_data="place_filter:favorites")],
+            [InlineKeyboardButton(text="мои любимые", callback_data="place_filter:favorites")],
             [InlineKeyboardButton(text="все места списком", callback_data="place_filter:all")],
         ]
     )
@@ -1665,8 +1675,7 @@ def place_list_keyboard(places: list[dict[str, Any]], back_callback: str = "plac
 
 def favorites_home_keyboard(user_id: int | None) -> InlineKeyboardMarkup:
     recipe_count = len(favorite_ids("recipes", user_id))
-    favorite_place_ids = {item_id(place) for place in load_places() if place.get("favorite") is True} | favorite_ids("places", user_id)
-    place_count = len(favorite_place_ids)
+    place_count = len(favorite_ids("places", user_id))
 
     return InlineKeyboardMarkup(
         inline_keyboard=[
@@ -1915,12 +1924,12 @@ async def answer_or_alert(
     callback: CallbackQuery,
     callback_body: Callable[[], Any],
 ) -> None:
+    await callback.answer()
+
     if callback.message is None:
-        await callback.answer()
         return
 
     await callback_body()
-    await callback.answer()
 
 
 @router.message(CommandStart())
@@ -1935,8 +1944,7 @@ async def handle_start(message: Message, state: FSMContext) -> None:
 
     await message.answer(
         "оставь надежду, всяк сюда входящий.\n\n"
-        "привет, это Анин бот. он помогает ей держать под рукой заведения, рецепты и всякие любимые штуки. "
-        "может, и тебе я буду полезен.",
+        "привет, я Анин бот. у меня ты можешь найти лучшие рецепты и лучшие места.",
         reply_markup=main_keyboard(message.from_user),
     )
 
@@ -1947,8 +1955,7 @@ async def handle_back(message: Message, state: FSMContext) -> None:
     data = await state.get_data()
     back_count = int(data.get("back_count", 0)) + 1
     await state.update_data(back_count=back_count)
-    text = "выбери, что хочешь" if back_count == 1 else "путник, ты вернулся назад. выбирай, что дальше."
-    await message.answer(text, reply_markup=main_keyboard(message.from_user))
+    await message.answer("путник, ты вернулся назад. выбирай, что дальше.", reply_markup=main_keyboard(message.from_user))
 
 
 @router.message(F.text == COOKING_BUTTON)
@@ -2046,10 +2053,10 @@ async def handle_admin_callback(callback: CallbackQuery, state: FSMContext) -> N
 
         if action == "stickers":
             await callback.message.answer(
-                "пришли мне стикер, и я отвечу его `file_id`.\n"
-                "потом можно положить его в `.env` как `START_STICKER_ID=...`, и бот будет слать его на /start.",
-                parse_mode="Markdown",
+                "пришли мне стикер, и я отвечу его file_id.\n"
+                "потом можно положить его в .env как START_STICKER_ID=..., и бот будет слать его на /start."
             )
+            return
 
     await answer_or_alert(callback, body)
 
@@ -2160,10 +2167,7 @@ async def handle_admin_place_photo(message: Message, state: FSMContext, bot: Bot
 async def answer_sticker_file_id(message: Message) -> None:
     if message.sticker is None:
         return
-    await message.answer(
-        f"file_id стикера:\n`{message.sticker.file_id}`",
-        parse_mode="Markdown",
-    )
+    await message.answer(f"file_id стикера:\n{message.sticker.file_id}")
 
 
 @router.message(AdminState.waiting_for_place_photo, F.sticker)
@@ -2297,7 +2301,7 @@ async def handle_random_place(message: Message) -> None:
 async def handle_place_favorites(message: Message, state: FSMContext) -> None:
     places = load_places()
     ids = favorite_ids("places", message.from_user.id if message.from_user else None)
-    found = [place for place in places if item_id(place) in ids or place.get("favorite") is True]
+    found = [place for place in places if item_id(place) in ids]
 
     if not found:
         await message.answer("любимых мест пока нет. нажми ⭐ под местом, и оно появится тут.", reply_markup=places_keyboard())
@@ -2534,8 +2538,8 @@ async def handle_place_filter(callback: CallbackQuery, state: FSMContext) -> Non
         title = "все места"
     elif data == "favorites":
         ids = favorite_ids("places", user_id)
-        filtered_places = [place for place in places if item_id(place) in ids or place.get("favorite") is True]
-        title = "любимые / рекомендации"
+        filtered_places = [place for place in places if item_id(place) in ids]
+        title = "мои любимые"
     elif data.startswith("status:"):
         status = data.removeprefix("status:")
         filtered_places = [place for place in places if place.get("status") == status]
@@ -2653,7 +2657,7 @@ async def handle_favorites_callback(callback: CallbackQuery, state: FSMContext) 
 
         places = load_places()
         ids = favorite_ids("places", user_id)
-        found = [place for place in places if item_id(place) in ids or place.get("favorite") is True]
+        found = [place for place in places if item_id(place) in ids]
         if not found:
             await callback.message.answer("любимых мест пока нет", reply_markup=places_keyboard())
             return
