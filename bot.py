@@ -2032,6 +2032,8 @@ async def main() -> None:
     dispatcher = Dispatcher(storage=MemoryStorage())
     dispatcher.include_router(router)
 
+    if proxy:
+        print("telegram proxy enabled")
     print("бот запущен")
     await dispatcher.start_polling(bot)
 

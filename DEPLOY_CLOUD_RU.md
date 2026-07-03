@@ -76,19 +76,30 @@ curl -4 -v --connect-timeout 10 https://api.telegram.org
 
 Если Google открывается, а `api.telegram.org:443` уходит в timeout, бот будет падать с `TelegramNetworkError: Request timeout error`. Это проблема сетевого доступа ВМ к Telegram API.
 
-Варианты:
+Что можно сделать без ожидания поддержки: пустить Telegram-запросы через прокси.
 
-1. Проверить правила сети Cloud.ru: исходящий TCP 443 должен быть разрешён.
-2. Использовать HTTP-прокси и добавить его в `.env`:
+Логин и пароль в прокси-строке, если они есть, выдаёт именно прокси-сервис. Это не логин Cloud.ru, не GitHub и не пользователь сервера.
+
+Поддерживаются такие варианты:
 
 ```env
+TELEGRAM_PROXY=http://host:port
 TELEGRAM_PROXY=http://user:password@host:port
+TELEGRAM_PROXY=socks5://user:password@host:port
 ```
 
-После изменения `.env`:
+После изменения `.env` обновить зависимости и проверить доступ:
+
+```bash
+.venv/bin/pip install -r requirements.txt
+.venv/bin/python check_telegram.py
+```
+
+Если проверка пишет `Telegram API check: OK`, перезапустить службу:
 
 ```bash
 sudo systemctl restart shesocold-bot
+sudo systemctl status shesocold-bot
 ```
 
-3. Если прокси не нужен, но Cloud.ru всё равно не открывает Telegram API, проще перенести бота на хостинг/сервер, где `curl -4 -I https://api.telegram.org` работает.
+Если без прокси `check_telegram.py` падает с timeout, а с прокси тоже падает, значит конкретный прокси не подходит или Cloud.ru режет этот маршрут. Тогда нужны другой прокси/VPN или другой хостинг, где `curl -4 -I https://api.telegram.org` работает.
