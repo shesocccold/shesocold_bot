@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Any, Callable
 
 from aiogram import Bot, Dispatcher, F, Router
+from aiogram.client.session.aiohttp import AiohttpSession
 from aiogram.filters import CommandStart
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
@@ -2019,13 +2020,15 @@ async def handle_unknown(message: Message) -> None:
 async def main() -> None:
     load_dotenv(BASE_DIR / ".env")
     token = os.getenv("BOT_TOKEN")
+    proxy = os.getenv("TELEGRAM_PROXY")
 
     if not token or token == "your_telegram_bot_token_here":
         raise SystemExit(
             "BOT_TOKEN не найден. Создай файл .env рядом с bot.py и добавь туда BOT_TOKEN=токен_от_BotFather"
         )
 
-    bot = Bot(token=token)
+    session = AiohttpSession(proxy=proxy) if proxy else None
+    bot = Bot(token=token, session=session)
     dispatcher = Dispatcher(storage=MemoryStorage())
     dispatcher.include_router(router)
 
