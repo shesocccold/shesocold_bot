@@ -28,10 +28,10 @@ RECIPES_PATH = BASE_DIR / "recipes.json"
 PLACES_PATH = BASE_DIR / "places.json"
 FAVORITES_PATH = BASE_DIR / "favorites.json"
 
-COOKING_BUTTON = "🍳 готовка"
+COOKING_BUTTON = "🍳 рецепты"
 PLACES_BUTTON = "📍 места"
 FAVORITES_BUTTON = "⭐ любимое"
-BACK_BUTTON = "⬅️ главное"
+BACK_BUTTON = "⬅️ в главное меню"
 
 DAD_BUTTON = "🥚 папины омлеты"
 RANDOM_BUTTON = "🎲 рандомный рецепт"
@@ -85,6 +85,7 @@ PLACE_TYPE_ALIASES = {
     "record_store": ["пластинки", "музыка", "record", "records"],
 }
 PLACE_RESULT_LIMIT = 10
+RECIPE_RESULT_LIMIT = 10
 BROAD_PLACE_QUERIES = {
     "места",
     "место",
@@ -266,7 +267,7 @@ def main_keyboard() -> ReplyKeyboardMarkup:
             [KeyboardButton(text=FAVORITES_BUTTON)],
         ],
         resize_keyboard=True,
-        input_field_placeholder="выбери раздел",
+        input_field_placeholder="выбери, что хочешь",
     )
 
 
@@ -278,7 +279,7 @@ def cooking_keyboard() -> ReplyKeyboardMarkup:
             [KeyboardButton(text=RECIPE_FAVORITES_BUTTON), KeyboardButton(text=BACK_BUTTON)],
         ],
         resize_keyboard=True,
-        input_field_placeholder="что готовим?",
+        input_field_placeholder="что сегодня делаем?",
     )
 
 
@@ -293,6 +294,66 @@ def places_keyboard() -> ReplyKeyboardMarkup:
         resize_keyboard=True,
         input_field_placeholder="куда идём?",
     )
+
+
+def all_menu_buttons() -> set[str]:
+    return {
+        COOKING_BUTTON,
+        PLACES_BUTTON,
+        FAVORITES_BUTTON,
+        BACK_BUTTON,
+        DAD_BUTTON,
+        RANDOM_BUTTON,
+        SEARCH_BUTTON,
+        ALL_BUTTON,
+        RECIPE_FAVORITES_BUTTON,
+        ALL_PLACES_BUTTON,
+        PLACE_SEARCH_BUTTON,
+        RANDOM_PLACE_BUTTON,
+        PLACE_FAVORITES_BUTTON,
+        VISITED_PLACES_BUTTON,
+        WISHLIST_PLACES_BUTTON,
+    }
+
+
+async def route_menu_button(message: Message, state: FSMContext, text: str) -> bool:
+    if text not in all_menu_buttons():
+        return False
+
+    await state.set_state(None)
+
+    if text == BACK_BUTTON:
+        await handle_back(message, state)
+    elif text == COOKING_BUTTON:
+        await handle_cooking_home(message, state)
+    elif text == PLACES_BUTTON:
+        await handle_places_home(message, state)
+    elif text == FAVORITES_BUTTON:
+        await handle_favorites_home(message)
+    elif text == DAD_BUTTON:
+        await handle_dad_gate(message, state)
+    elif text == RANDOM_BUTTON:
+        await handle_random_recipe(message, state)
+    elif text == ALL_BUTTON:
+        await handle_all_recipes(message, state)
+    elif text == SEARCH_BUTTON:
+        await handle_search_request(message, state)
+    elif text == RECIPE_FAVORITES_BUTTON:
+        await handle_recipe_favorites(message, state)
+    elif text == ALL_PLACES_BUTTON:
+        await handle_all_places(message)
+    elif text == PLACE_SEARCH_BUTTON:
+        await handle_place_search_request(message, state)
+    elif text == RANDOM_PLACE_BUTTON:
+        await handle_random_place(message)
+    elif text == PLACE_FAVORITES_BUTTON:
+        await handle_place_favorites(message)
+    elif text == VISITED_PLACES_BUTTON:
+        await handle_visited_places(message)
+    elif text == WISHLIST_PLACES_BUTTON:
+        await handle_wishlist_places(message)
+
+    return True
 
 
 def read_json(path: Path, fallback: Any) -> Any:
@@ -850,11 +911,66 @@ def recipe_filter_summary(filters: dict[str, Any]) -> str:
     return "; ".join(parts)
 
 
+def page_count(total: int, limit: int) -> int:
+    return max(1, (total + limit - 1) // limit)
+
+
+def clamp_page(page: int, total: int, limit: int) -> int:
+    return max(0, min(page, page_count(total, limit) - 1))
+
+
+def recipe_results_keyboard(recipes: list[dict[str, Any]], page: int = 0) -> InlineKeyboardMarkup:
+    page = clamp_page(page, len(recipes), RECIPE_RESULT_LIMIT)
+    start = page * RECIPE_RESULT_LIMIT
+    end = start + RECIPE_RESULT_LIMIT
+    keyboard = [
+        [InlineKeyboardButton(text=recipe.get("title", "без названия"), callback_data=f"recipe:{item_id(recipe)}")]
+        for recipe in recipes[start:end]
+    ]
+
+    nav: list[InlineKeyboardButton] = []
+    if page > 0:
+        nav.append(InlineKeyboardButton(text="← назад", callback_data=f"recipe_results:{page - 1}"))
+    if end < len(recipes):
+        nav.append(InlineKeyboardButton(text="дальше →", callback_data=f"recipe_results:{page + 1}"))
+    if nav:
+        keyboard.append(nav)
+
+    return InlineKeyboardMarkup(inline_keyboard=keyboard)
+
+
+async def save_recipe_result_ids(state: FSMContext | None, recipes: list[dict[str, Any]]) -> None:
+    if state is not None:
+        await state.update_data(recipe_result_ids=[item_id(recipe) for recipe in recipes])
+
+
+async def send_recipe_result_list(
+    message: Message,
+    recipes: list[dict[str, Any]],
+    state: FSMContext | None,
+    title: str,
+    page: int = 0,
+) -> None:
+    if not recipes:
+        await message.answer("ничего не нашла 🥲 попробуй другой запрос", reply_markup=cooking_keyboard())
+        return
+
+    await save_recipe_result_ids(state, recipes)
+    page = clamp_page(page, len(recipes), RECIPE_RESULT_LIMIT)
+    header = title
+    if len(recipes) > RECIPE_RESULT_LIMIT:
+        header += f"\nстраница {page + 1}/{page_count(len(recipes), RECIPE_RESULT_LIMIT)}"
+
+    await message.answer(header, reply_markup=cooking_keyboard())
+    await message.answer("выбери рецепт:", reply_markup=recipe_results_keyboard(recipes, page))
+
+
 async def send_recipe_results(
     message: Message,
     recipes: list[dict[str, Any]],
     filters: dict[str, Any],
     user_id: int | None,
+    state: FSMContext | None = None,
 ) -> None:
     found = apply_recipe_filters(recipes, filters)
 
@@ -874,16 +990,12 @@ async def send_recipe_results(
         await send_recipe(message, random.choice(found), user_id)
         return
 
-    summary = recipe_filter_summary(filters)
-    header = f"нашла рецептов: {len(found)}"
-    if summary:
-        header += f"\nфильтр: {summary}"
-    if len(found) > 5:
-        header += "\nпоказываю первые 5"
-
-    await message.answer(header, reply_markup=cooking_keyboard())
-    for recipe in found[:5]:
-        await send_recipe(message, recipe, user_id)
+    await send_recipe_result_list(
+        message,
+        found,
+        state,
+        f"по твоему запросу я нашла рецептов: {len(found)}",
+    )
 
 
 def place_search_text(place: dict[str, Any]) -> str:
@@ -1162,7 +1274,7 @@ async def send_places_dashboard(message: Message, user_id: int | None = None) ->
         return
 
     await message.answer(
-        "места не вываливаю списком: сначала выбери подборку или напиши фильтр.",
+        "выбери подборку или напиши, что ищем.",
         reply_markup=places_keyboard(),
     )
     await message.answer(
@@ -1253,8 +1365,18 @@ def recipe_list_keyboard(
 
 
 def all_categories_keyboard(recipes: list[dict[str, Any]]) -> InlineKeyboardMarkup:
-    buttons: list[InlineKeyboardButton] = []
+    buttons: list[InlineKeyboardButton] = [
+        InlineKeyboardButton(text=f"все рецепты ({len(recipes)})", callback_data="category:special:all")
+    ]
     seen_categories: set[str] = set()
+    category_labels = {
+        "завтрак": "завтраки",
+        "ужин": "ужины",
+        "паста": "паста",
+        "суп": "супы",
+        "десерт": "десерты",
+        "салат": "салаты",
+    }
 
     for recipe in recipes:
         category = str(recipe.get("category") or "без категории")
@@ -1266,18 +1388,26 @@ def all_categories_keyboard(recipes: list[dict[str, Any]]) -> InlineKeyboardMark
         count = sum(1 for item in recipes if normalize(item.get("category")) == category_key)
         buttons.append(
             InlineKeyboardButton(
-                text=f"{category} ({count})",
+                text=f"{category_labels.get(category_key, category)} ({count})",
                 callback_data=f"category:{category}",
             )
         )
 
     quick_count = sum(1 for recipe in recipes if is_quick(recipe))
     if quick_count:
-        buttons.append(InlineKeyboardButton(text=f"быстрое ({quick_count})", callback_data="category:special:quick"))
+        buttons.append(InlineKeyboardButton(text=f"до 20 минут ({quick_count})", callback_data="category:special:quick"))
 
     hard_count = sum(1 for recipe in recipes if is_hard(recipe))
     if hard_count:
-        buttons.append(InlineKeyboardButton(text=f"сложное ({hard_count})", callback_data="category:special:hard"))
+        buttons.append(InlineKeyboardButton(text=f"посложнее ({hard_count})", callback_data="category:special:hard"))
+
+    photo_count = sum(1 for recipe in recipes if isinstance(recipe.get("image"), str))
+    if photo_count:
+        buttons.append(InlineKeyboardButton(text=f"с фото ({photo_count})", callback_data="category:special:photo"))
+
+    protein_count = sum(1 for recipe in recipes if (nutrition_value(recipe, "protein") or 0) >= 20)
+    if protein_count:
+        buttons.append(InlineKeyboardButton(text=f"белка побольше ({protein_count})", callback_data="category:special:protein"))
 
     return InlineKeyboardMarkup(inline_keyboard=chunk_buttons(buttons))
 
@@ -1286,11 +1416,20 @@ def filter_category(
     recipes: list[dict[str, Any]],
     category_data: str,
 ) -> tuple[str, list[dict[str, Any]]]:
+    if category_data == "special:all":
+        return "все рецепты", recipes
+
     if category_data == "special:quick":
-        return "быстрое", [recipe for recipe in recipes if is_quick(recipe)]
+        return "до 20 минут", [recipe for recipe in recipes if is_quick(recipe)]
 
     if category_data == "special:hard":
-        return "сложное", [recipe for recipe in recipes if is_hard(recipe)]
+        return "посложнее", [recipe for recipe in recipes if is_hard(recipe)]
+
+    if category_data == "special:photo":
+        return "с фото", [recipe for recipe in recipes if isinstance(recipe.get("image"), str)]
+
+    if category_data == "special:protein":
+        return "белка побольше", [recipe for recipe in recipes if (nutrition_value(recipe, "protein") or 0) >= 20]
 
     category = category_data
     return category, [recipe for recipe in recipes if normalize(recipe.get("category")) == normalize(category)]
@@ -1377,19 +1516,19 @@ async def answer_or_alert(
 @router.message(CommandStart())
 async def handle_start(message: Message, state: FSMContext) -> None:
     await state.clear()
-    await message.answer("привет, я анин бот 🍳📍\nкуда идём?", reply_markup=main_keyboard())
+    await message.answer("привет, я Анин бот 🍳📍\nчто сегодня ты хочешь?", reply_markup=main_keyboard())
 
 
 @router.message(F.text == BACK_BUTTON)
 async def handle_back(message: Message, state: FSMContext) -> None:
     await state.set_state(None)
-    await message.answer("главное меню", reply_markup=main_keyboard())
+    await message.answer("выбери, что хочешь", reply_markup=main_keyboard())
 
 
 @router.message(F.text == COOKING_BUTTON)
 async def handle_cooking_home(message: Message, state: FSMContext) -> None:
     await state.set_state(None)
-    await message.answer("готовка отдельно, папины омлеты отдельно. что делаем?", reply_markup=cooking_keyboard())
+    await message.answer("что сегодня делаем?", reply_markup=cooking_keyboard())
 
 
 @router.message(F.text == PLACES_BUTTON)
@@ -1411,6 +1550,10 @@ async def handle_dad_gate(message: Message, state: FSMContext) -> None:
 
 @router.message(DadState.waiting_for_password)
 async def handle_dad_password(message: Message, state: FSMContext) -> None:
+    text = message.text or ""
+    if await route_menu_button(message, state, text):
+        return
+
     if normalize(message.text).strip() != DAD_PASSWORD:
         await state.clear()
         await message.answer("доступ закрыт.", reply_markup=cooking_keyboard())
@@ -1441,7 +1584,7 @@ async def handle_all_recipes(message: Message, state: FSMContext) -> None:
         await message.answer("рецептов пока нет", reply_markup=cooking_keyboard())
         return
 
-    await message.answer("выбери категорию:", reply_markup=all_categories_keyboard(recipes))
+    await message.answer("как будем искать рецепты?", reply_markup=all_categories_keyboard(recipes))
 
 
 @router.message(F.text == SEARCH_BUTTON)
@@ -1463,20 +1606,23 @@ async def handle_recipe_favorites(message: Message, state: FSMContext) -> None:
         await message.answer("любимых рецептов пока нет. нажми ⭐ под рецептом, и он появится тут.", reply_markup=cooking_keyboard())
         return
 
-    await message.answer(f"любимые рецепты: {len(found)}", reply_markup=cooking_keyboard())
-    for recipe in found:
-        await send_recipe(message, recipe, message.from_user.id if message.from_user else None)
+    await send_recipe_result_list(message, found, state, f"любимые рецепты: {len(found)}")
 
 
 @router.message(SearchState.waiting_for_query)
 async def handle_search_query(message: Message, state: FSMContext) -> None:
+    text = message.text or ""
+    if await route_menu_button(message, state, text):
+        return
+
     recipes = await visible_recipes(state)
     await state.set_state(None)
     await send_recipe_results(
         message,
         recipes,
-        parse_recipe_filters(message.text or "", recipes),
+        parse_recipe_filters(text, recipes),
         message.from_user.id if message.from_user else None,
+        state,
     )
 
 
@@ -1542,12 +1688,16 @@ async def handle_wishlist_places(message: Message) -> None:
 
 @router.message(PlaceSearchState.waiting_for_query)
 async def handle_place_search_query(message: Message, state: FSMContext) -> None:
+    text = message.text or ""
+    if await route_menu_button(message, state, text):
+        return
+
     places = load_places()
     await state.set_state(None)
     await send_place_results(
         message,
         places,
-        parse_place_filters(message.text or "", places),
+        parse_place_filters(text, places),
         message.from_user.id if message.from_user else None,
     )
 
@@ -1611,7 +1761,7 @@ async def handle_categories_home(callback: CallbackQuery, state: FSMContext) -> 
     recipes = await visible_recipes(state)
 
     async def body() -> None:
-        await callback.message.answer("выбери категорию:", reply_markup=all_categories_keyboard(recipes))
+        await callback.message.answer("как будем искать рецепты?", reply_markup=all_categories_keyboard(recipes))
 
     await answer_or_alert(callback, body)
 
@@ -1627,9 +1777,37 @@ async def handle_category(callback: CallbackQuery, state: FSMContext) -> None:
             await callback.message.answer("тут пока пусто", reply_markup=cooking_keyboard())
             return
 
+        await send_recipe_result_list(
+            callback.message,
+            filtered_recipes,
+            state,
+            f"{category_name}: {len(filtered_recipes)}",
+        )
+
+    await answer_or_alert(callback, body)
+
+
+@router.callback_query(F.data.startswith("recipe_results:"))
+async def handle_recipe_results_page(callback: CallbackQuery, state: FSMContext) -> None:
+    try:
+        page = int((callback.data or "").removeprefix("recipe_results:"))
+    except ValueError:
+        page = 0
+
+    data = await state.get_data()
+    ids = data.get("recipe_result_ids", [])
+    recipes = await visible_recipes(state)
+    recipe_by_id = {item_id(recipe): recipe for recipe in recipes}
+    found = [recipe_by_id[recipe_id] for recipe_id in ids if recipe_id in recipe_by_id]
+
+    async def body() -> None:
+        if not found:
+            await callback.message.answer("список устарел, попробуй поиск ещё раз", reply_markup=cooking_keyboard())
+            return
+
         await callback.message.answer(
-            f"{category_name}: выбери рецепт",
-            reply_markup=recipe_list_keyboard(filtered_recipes, "recipe", "categories_home"),
+            f"рецепты: {len(found)}\nстраница {clamp_page(page, len(found), RECIPE_RESULT_LIMIT) + 1}/{page_count(len(found), RECIPE_RESULT_LIMIT)}",
+            reply_markup=recipe_results_keyboard(found, page),
         )
 
     await answer_or_alert(callback, body)
@@ -1776,9 +1954,7 @@ async def handle_favorites_callback(callback: CallbackQuery, state: FSMContext) 
             if not found:
                 await callback.message.answer("любимых рецептов пока нет", reply_markup=cooking_keyboard())
                 return
-            await callback.message.answer(f"любимые рецепты: {len(found)}", reply_markup=cooking_keyboard())
-            for recipe in found:
-                await send_recipe(callback.message, recipe, user_id)
+            await send_recipe_result_list(callback.message, found, state, f"любимые рецепты: {len(found)}")
             return
 
         places = load_places()
@@ -1808,13 +1984,15 @@ async def handle_smart_text(message: Message, state: FSMContext) -> None:
             await message.answer("любимых рецептов пока нет. нажми ⭐ под рецептом, и он появится тут.", reply_markup=cooking_keyboard())
             return
 
-        await message.answer(f"любимые рецепты: {len(found)}", reply_markup=cooking_keyboard())
-        for recipe in found:
-            await send_recipe(message, recipe, user_id)
+        await send_recipe_result_list(message, found, state, f"любимые рецепты: {len(found)}")
         return
 
     if re.fullmatch(r"(любимое|избранное|любимые)", normalized_text.strip()):
         await message.answer("любимое:", reply_markup=favorites_home_keyboard(user_id))
+        return
+
+    if compact_text(text) in {"рецепты", "все рецепты", "что приготовить"}:
+        await message.answer("как будем искать рецепты?", reply_markup=all_categories_keyboard(recipes))
         return
 
     place_filters = parse_place_filters(text, places)
@@ -1830,7 +2008,7 @@ async def handle_smart_text(message: Message, state: FSMContext) -> None:
         await send_place_results(message, places, place_filters, user_id)
         return
 
-    await send_recipe_results(message, recipes, recipe_filters, user_id)
+    await send_recipe_results(message, recipes, recipe_filters, user_id, state)
 
 
 @router.message()
