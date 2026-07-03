@@ -1,4 +1,5 @@
 import asyncio
+import hashlib
 import json
 import os
 import random
@@ -28,11 +29,13 @@ BASE_DIR = Path(__file__).resolve().parent
 RECIPES_PATH = BASE_DIR / "recipes.json"
 PLACES_PATH = BASE_DIR / "places.json"
 FAVORITES_PATH = BASE_DIR / "favorites.json"
+SETTINGS_PATH = BASE_DIR / "settings.json"
 
 COOKING_BUTTON = "🍳 рецепты"
 PLACES_BUTTON = "📍 места"
 FAVORITES_BUTTON = "⭐ любимое"
-BACK_BUTTON = "⬅️ в главное меню"
+ADMIN_BUTTON = "⚙️ админка"
+BACK_BUTTON = "⬅️ назад"
 
 DAD_BUTTON = "🥚 папины омлеты"
 RANDOM_BUTTON = "🎲 рандомный рецепт"
@@ -44,9 +47,9 @@ ALL_PLACES_BUTTON = "📚 все места"
 PLACE_SEARCH_BUTTON = "🔎 найти место"
 RANDOM_PLACE_BUTTON = "🎲 куда сходить"
 PLACE_FAVORITES_BUTTON = "⭐ любимые места"
-VISITED_PLACES_BUTTON = "✅ где я была"
-WISHLIST_PLACES_BUTTON = "📝 хочу сходить"
-PLACES_MAP_URL = "https://yandex.ru/maps/?um=constructor%3A2d5f7ca17c7cad37b342c0a2d3038a5b02563b904e5dfdb3bb4034bbcaa2f8b4&source=constructorLink"
+VISITED_PLACES_BUTTON = "✅ где Аня была"
+WISHLIST_PLACES_BUTTON = "📝 Аня хочет сходить"
+DEFAULT_PLACES_MAP_URL = "https://yandex.ru/maps/?um=constructor%3A2d5f7ca17c7cad37b342c0a2d3038a5b02563b904e5dfdb3bb4034bbcaa2f8b4&source=constructorLink"
 
 DAD_PASSWORD = "тома"
 DAD_CLUSTER_LABELS = {
@@ -59,8 +62,8 @@ DAD_CLUSTER_LABELS = {
 DAD_CLUSTER_ORDER = ["classic", "tender", "cheese", "hearty", "vegetables"]
 
 PLACE_STATUS_LABELS = {
-    "visited": "была",
-    "wishlist": "хочу сходить",
+    "visited": "Аня была",
+    "wishlist": "Аня хочет сходить",
 }
 PLACE_TYPE_LABELS = {
     "coffee": "кофе",
@@ -262,12 +265,41 @@ class DadState(StatesGroup):
     waiting_for_password = State()
 
 
-def main_keyboard() -> ReplyKeyboardMarkup:
+class AdminState(StatesGroup):
+    waiting_for_place = State()
+    waiting_for_map_url = State()
+    waiting_for_place_photo = State()
+
+
+def env_values(name: str, default: str = "") -> set[str]:
+    raw = os.getenv(name, default)
+    return {item.strip().casefold() for item in raw.split(",") if item.strip()}
+
+
+def is_admin_user(user: Any) -> bool:
+    if user is None:
+        return False
+
+    admin_ids = env_values("ADMIN_USER_IDS")
+    if admin_ids and str(getattr(user, "id", "")) in admin_ids:
+        return True
+
+    usernames = env_values("ADMIN_USERNAMES", "shesocold,shesocccold")
+    username = normalize(getattr(user, "username", ""))
+    return bool(username and username in usernames)
+
+
+def main_keyboard(user: Any = None) -> ReplyKeyboardMarkup:
+    keyboard = [
+        [KeyboardButton(text=COOKING_BUTTON), KeyboardButton(text=PLACES_BUTTON)],
+        [KeyboardButton(text=FAVORITES_BUTTON)],
+    ]
+
+    if is_admin_user(user):
+        keyboard.append([KeyboardButton(text=ADMIN_BUTTON)])
+
     return ReplyKeyboardMarkup(
-        keyboard=[
-            [KeyboardButton(text=COOKING_BUTTON), KeyboardButton(text=PLACES_BUTTON)],
-            [KeyboardButton(text=FAVORITES_BUTTON)],
-        ],
+        keyboard=keyboard,
         resize_keyboard=True,
         input_field_placeholder="выбери, что хочешь",
     )
@@ -303,6 +335,7 @@ def all_menu_buttons() -> set[str]:
         COOKING_BUTTON,
         PLACES_BUTTON,
         FAVORITES_BUTTON,
+        ADMIN_BUTTON,
         BACK_BUTTON,
         DAD_BUTTON,
         RANDOM_BUTTON,
@@ -332,6 +365,8 @@ async def route_menu_button(message: Message, state: FSMContext, text: str) -> b
         await handle_places_home(message, state)
     elif text == FAVORITES_BUTTON:
         await handle_favorites_home(message)
+    elif text == ADMIN_BUTTON:
+        await handle_admin_home(message, state)
     elif text == DAD_BUTTON:
         await handle_dad_gate(message, state)
     elif text == RANDOM_BUTTON:
@@ -393,6 +428,23 @@ def load_places() -> list[dict[str, Any]]:
         return []
 
     return [place for place in places if isinstance(place, dict)]
+
+
+def save_places(places: list[dict[str, Any]]) -> None:
+    write_json(PLACES_PATH, places)
+
+
+def load_settings() -> dict[str, Any]:
+    settings = read_json(SETTINGS_PATH, {})
+    return settings if isinstance(settings, dict) else {}
+
+
+def save_settings(settings: dict[str, Any]) -> None:
+    write_json(SETTINGS_PATH, settings)
+
+
+def places_map_url() -> str:
+    return str(os.getenv("PLACES_MAP_URL") or load_settings().get("places_map_url") or DEFAULT_PLACES_MAP_URL)
 
 
 def load_favorites() -> dict[str, dict[str, list[str]]]:
@@ -1276,12 +1328,8 @@ async def send_places_dashboard(message: Message, user_id: int | None = None) ->
         return
 
     await message.answer(
-        f"выбери подборку или напиши, что ищем.\n\nкарта всех мест: {PLACES_MAP_URL}",
+        f"выбери подборку или напиши, что ищем.\n\nкарта всех мест: {places_map_url()}",
         reply_markup=places_keyboard(),
-    )
-    await message.answer(
-        "быстрые подборки:",
-        reply_markup=place_filters_keyboard(places, user_id),
     )
 
 
@@ -1300,7 +1348,7 @@ async def send_place_results(
 
     if not has_place_filters(filters):
         await message.answer(
-            "по местам понимаю так: «кофе у метро Китай-город», «бар где я была», «хочу сходить на бранч», «любимые места»",
+            "по местам понимаю так: «кофе у метро Китай-город», «бар где Аня была», «Аня хочет сходить на бранч», «любимые места»",
             reply_markup=places_keyboard(),
         )
         return
@@ -1441,11 +1489,11 @@ def place_filters_keyboard(places: list[dict[str, Any]], user_id: int | None) ->
     favorite_place_ids = {item_id(place) for place in places if place.get("favorite") is True} | favorite_ids("places", user_id)
     buttons = [
         InlineKeyboardButton(
-            text=f"где я была ({sum(1 for place in places if place.get('status') == 'visited')})",
+            text=f"где Аня была ({sum(1 for place in places if place.get('status') == 'visited')})",
             callback_data="place_filter:status:visited",
         ),
         InlineKeyboardButton(
-            text=f"хочу сходить ({sum(1 for place in places if place.get('status') == 'wishlist')})",
+            text=f"Аня хочет сходить ({sum(1 for place in places if place.get('status') == 'wishlist')})",
             callback_data="place_filter:status:wishlist",
         ),
         InlineKeyboardButton(
@@ -1465,6 +1513,74 @@ def place_filters_keyboard(places: list[dict[str, Any]], user_id: int | None) ->
             )
 
     return InlineKeyboardMarkup(inline_keyboard=chunk_buttons(buttons))
+
+
+def place_filter_home_keyboard() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text="по Аниным спискам", callback_data="place_group:status")],
+            [InlineKeyboardButton(text="по формату места", callback_data="place_group:type")],
+            [InlineKeyboardButton(text="по метро", callback_data="place_group:metro")],
+            [InlineKeyboardButton(text="любимые / рекомендации", callback_data="place_filter:favorites")],
+            [InlineKeyboardButton(text="все места списком", callback_data="place_filter:all")],
+        ]
+    )
+
+
+def place_status_keyboard(places: list[dict[str, Any]]) -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(
+                    text=f"где Аня была ({sum(1 for place in places if place.get('status') == 'visited')})",
+                    callback_data="place_filter:status:visited",
+                )
+            ],
+            [
+                InlineKeyboardButton(
+                    text=f"Аня хочет сходить ({sum(1 for place in places if place.get('status') == 'wishlist')})",
+                    callback_data="place_filter:status:wishlist",
+                )
+            ],
+            [InlineKeyboardButton(text="назад", callback_data="place_group:home")],
+        ]
+    )
+
+
+def place_type_keyboard(places: list[dict[str, Any]]) -> InlineKeyboardMarkup:
+    buttons = []
+    for place_type, label in PLACE_TYPE_LABELS.items():
+        count = sum(1 for place in places if place_has_type(place, place_type))
+        if count:
+            buttons.append(InlineKeyboardButton(text=f"{label} ({count})", callback_data=f"place_filter:type:{place_type}"))
+
+    keyboard = chunk_buttons(buttons)
+    keyboard.append([InlineKeyboardButton(text="назад", callback_data="place_group:home")])
+    return InlineKeyboardMarkup(inline_keyboard=keyboard)
+
+
+def metro_filter_values(places: list[dict[str, Any]]) -> list[str]:
+    values: set[str] = set()
+    for place in places:
+        metro = place.get("metro")
+        if isinstance(metro, list):
+            values.update(str(item) for item in metro if item)
+
+    return sorted(values)
+
+
+def place_metro_keyboard(places: list[dict[str, Any]]) -> InlineKeyboardMarkup:
+    buttons = [
+        InlineKeyboardButton(
+            text=f"{metro} ({sum(1 for place in places if metro in place.get('metro', []))})",
+            callback_data=f"place_filter:metro:{index}",
+        )
+        for index, metro in enumerate(metro_filter_values(places))
+    ]
+
+    keyboard = chunk_buttons(buttons, size=1)
+    keyboard.append([InlineKeyboardButton(text="назад", callback_data="place_group:home")])
+    return InlineKeyboardMarkup(inline_keyboard=keyboard)
 
 
 def place_list_keyboard(places: list[dict[str, Any]], back_callback: str = "places_home") -> InlineKeyboardMarkup:
@@ -1488,6 +1604,122 @@ def favorites_home_keyboard(user_id: int | None) -> InlineKeyboardMarkup:
             [InlineKeyboardButton(text=f"места ({place_count})", callback_data="favorites:places")],
         ]
     )
+
+
+def admin_keyboard() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text="➕ добавить место", callback_data="admin:add_place")],
+            [InlineKeyboardButton(text="🖼 добавить фото к месту", callback_data="admin:add_photo")],
+            [InlineKeyboardButton(text="🗺 заменить ссылку карты", callback_data="admin:set_map")],
+            [InlineKeyboardButton(text="🪪 мой telegram id", callback_data="admin:whoami")],
+            [InlineKeyboardButton(text="🧷 стикеры", callback_data="admin:stickers")],
+        ]
+    )
+
+
+def parse_admin_fields(text: str) -> dict[str, str]:
+    aliases = {
+        "название": "title",
+        "имя": "title",
+        "адрес": "address",
+        "ссылка": "url",
+        "карта": "url",
+        "url": "url",
+        "статус": "status",
+        "тип": "types",
+        "типы": "types",
+        "метро": "metro",
+        "отзыв": "review",
+        "коммент": "review",
+        "город": "city",
+    }
+    fields: dict[str, str] = {}
+
+    for line in text.splitlines():
+        if ":" not in line:
+            continue
+        key, value = line.split(":", 1)
+        normalized_key = normalize(key).strip()
+        field = aliases.get(normalized_key)
+        if field and value.strip():
+            fields[field] = value.strip()
+
+    return fields
+
+
+def admin_place_id(title: str, url: str = "") -> str:
+    words = re.findall(r"[a-z0-9]+", compact_text(title))
+    prefix = "-".join(words[:5]) or "place"
+    suffix = hashlib.sha1(f"{title}|{url}".encode("utf-8")).hexdigest()[:8]
+    return f"{prefix}-{suffix}"[:64]
+
+
+def normalize_admin_status(value: str) -> str:
+    text = normalize(value)
+    if any(word in text for word in ("была", "ходила", "visited")):
+        return "visited"
+    return "wishlist"
+
+
+def normalize_admin_types(value: str) -> list[str]:
+    result: list[str] = []
+    chunks = [chunk.strip() for chunk in re.split(r"[,;/]", value) if chunk.strip()]
+    for chunk in chunks:
+        normalized_chunk = compact_text(chunk)
+        matched_type = None
+        for place_type, label in PLACE_TYPE_LABELS.items():
+            aliases = [label, *PLACE_TYPE_ALIASES.get(place_type, [])]
+            if any(compact_text(alias) == normalized_chunk for alias in aliases):
+                matched_type = place_type
+                break
+        if matched_type and matched_type not in result:
+            result.append(matched_type)
+
+    return result or ["cafe"]
+
+
+def build_admin_place(text: str) -> tuple[dict[str, Any] | None, str]:
+    fields = parse_admin_fields(text)
+    title = fields.get("title", "").strip()
+
+    if not title:
+        return None, "не вижу название. добавь строку `название: ...`"
+
+    place = {
+        "id": admin_place_id(title, fields.get("url", "")),
+        "title": title,
+        "city": fields.get("city", "Москва"),
+        "address": fields.get("address", ""),
+        "metro": [item.strip() for item in fields.get("metro", "").split(",") if item.strip()],
+        "types": normalize_admin_types(fields.get("types", "кафе")),
+        "status": normalize_admin_status(fields.get("status", "хочу")),
+        "favorite": False,
+        "tags": [],
+        "review": fields.get("review", ""),
+        "photos": [],
+        "url": fields.get("url", ""),
+    }
+
+    return place, ""
+
+
+def find_place_for_admin(query: str) -> dict[str, Any] | None:
+    query = normalize(query).strip()
+    if not query:
+        return None
+
+    places = load_places()
+    by_id = find_item(places, query)
+    if by_id:
+        return by_id
+
+    compact_query = compact_text(query)
+    for place in places:
+        if compact_query and compact_query in compact_text(place.get("title")):
+            return place
+
+    return None
 
 
 async def send_dad_home(message: Message) -> None:
@@ -1518,13 +1750,25 @@ async def answer_or_alert(
 @router.message(CommandStart())
 async def handle_start(message: Message, state: FSMContext) -> None:
     await state.clear()
-    await message.answer("привет, я Анин бот 🍳📍\nчто сегодня ты хочешь?", reply_markup=main_keyboard())
+    sticker_id = os.getenv("START_STICKER_ID")
+    if sticker_id:
+        try:
+            await message.answer_sticker(sticker_id)
+        except Exception as error:
+            print(f"не удалось отправить стартовый стикер: {error}")
+
+    await message.answer(
+        "привет, это Анин shesocold-бот 🍳📍\n\n"
+        "тут можно смотреть рецепты, места, любимое и Анину карту. "
+        "выбирай в меню, что хочешь, а если что-то бесит или хочется добавить — я жду обратной связи.",
+        reply_markup=main_keyboard(message.from_user),
+    )
 
 
 @router.message(F.text == BACK_BUTTON)
 async def handle_back(message: Message, state: FSMContext) -> None:
     await state.set_state(None)
-    await message.answer("выбери, что хочешь", reply_markup=main_keyboard())
+    await message.answer("выбери, что хочешь", reply_markup=main_keyboard(message.from_user))
 
 
 @router.message(F.text == COOKING_BUTTON)
@@ -1542,6 +1786,171 @@ async def handle_places_home(message: Message, state: FSMContext) -> None:
 @router.message(F.text == FAVORITES_BUTTON)
 async def handle_favorites_home(message: Message) -> None:
     await message.answer("любимое:", reply_markup=favorites_home_keyboard(message.from_user.id if message.from_user else None))
+
+
+@router.message(F.text == ADMIN_BUTTON)
+async def handle_admin_home(message: Message, state: FSMContext) -> None:
+    await state.set_state(None)
+    if not is_admin_user(message.from_user):
+        await message.answer("админка только для Ани.", reply_markup=main_keyboard(message.from_user))
+        return
+
+    await message.answer(
+        "админка Ани.\n\n"
+        "что делаем: добавляем место, меняем ссылку карты, прикручиваем фото или достаём file_id стикера.",
+        reply_markup=admin_keyboard(),
+    )
+
+
+@router.callback_query(F.data.startswith("admin:"))
+async def handle_admin_callback(callback: CallbackQuery, state: FSMContext) -> None:
+    if not is_admin_user(callback.from_user):
+        await callback.answer("админка только для Ани", show_alert=True)
+        return
+
+    action = (callback.data or "").removeprefix("admin:")
+
+    async def body() -> None:
+        if action == "add_place":
+            await state.set_state(AdminState.waiting_for_place)
+            await callback.message.answer(
+                "пришли место вот так:\n\n"
+                "название: Кофейня мечты\n"
+                "адрес: Москва, ул. Примерная, 1\n"
+                "ссылка: https://yandex.ru/maps/...\n"
+                "статус: хочу\n"
+                "тип: кофе, кафе\n"
+                "метро: Китай-город\n"
+                "отзыв: вайб на спокойный кофе"
+            )
+            return
+
+        if action == "add_photo":
+            await state.set_state(AdminState.waiting_for_place_photo)
+            await callback.message.answer(
+                "пришли фото, а в подписи напиши название места или его id.\n"
+                "например: Мама Варит Кофе"
+            )
+            return
+
+        if action == "set_map":
+            await state.set_state(AdminState.waiting_for_map_url)
+            await callback.message.answer("пришли новую ссылку на карту Яндекса одним сообщением.")
+            return
+
+        if action == "whoami":
+            user = callback.from_user
+            await callback.message.answer(
+                f"id: `{user.id}`\nusername: @{user.username or 'нет'}",
+                parse_mode="Markdown",
+            )
+            return
+
+        if action == "stickers":
+            await callback.message.answer(
+                "пришли мне стикер, и я отвечу его `file_id`.\n"
+                "потом можно положить его в `.env` как `START_STICKER_ID=...`, и бот будет слать его на /start.",
+                parse_mode="Markdown",
+            )
+
+    await answer_or_alert(callback, body)
+
+
+@router.message(AdminState.waiting_for_place)
+async def handle_admin_place_text(message: Message, state: FSMContext) -> None:
+    if not is_admin_user(message.from_user):
+        await state.clear()
+        await message.answer("админка только для Ани.", reply_markup=main_keyboard(message.from_user))
+        return
+
+    if await route_menu_button(message, state, message.text or ""):
+        return
+
+    place, error = build_admin_place(message.text or "")
+    if place is None:
+        await message.answer(error)
+        return
+
+    places = load_places()
+    places.append(place)
+    save_places(places)
+    await state.set_state(None)
+    await message.answer(f"добавила место: {place['title']}", reply_markup=places_keyboard())
+
+
+@router.message(AdminState.waiting_for_map_url)
+async def handle_admin_map_url(message: Message, state: FSMContext) -> None:
+    if not is_admin_user(message.from_user):
+        await state.clear()
+        await message.answer("админка только для Ани.", reply_markup=main_keyboard(message.from_user))
+        return
+
+    if await route_menu_button(message, state, message.text or ""):
+        return
+
+    url = (message.text or "").strip()
+    if not url.startswith("https://yandex.ru/maps/"):
+        await message.answer("это не похоже на ссылку Яндекс.Карт. пришли ссылку, которая начинается с https://yandex.ru/maps/")
+        return
+
+    settings = load_settings()
+    settings["places_map_url"] = url
+    save_settings(settings)
+    await state.set_state(None)
+    await message.answer("обновила ссылку карты.", reply_markup=places_keyboard())
+
+
+@router.message(AdminState.waiting_for_place_photo, F.photo)
+async def handle_admin_place_photo(message: Message, state: FSMContext, bot: Bot) -> None:
+    if not is_admin_user(message.from_user):
+        await state.clear()
+        await message.answer("админка только для Ани.", reply_markup=main_keyboard(message.from_user))
+        return
+
+    place = find_place_for_admin(message.caption or "")
+    if place is None:
+        await message.answer("не нашла место по подписи. подпиши фото названием места, например: Мама Варит Кофе")
+        return
+
+    photo = message.photo[-1]
+    file_hash = hashlib.sha1(photo.file_unique_id.encode("utf-8")).hexdigest()[:10]
+    filename = f"{item_id(place)[:40]}-{file_hash}.jpg"
+    relative_path = Path("assets") / "places" / filename
+    destination = BASE_DIR / relative_path
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    await bot.download(photo, destination=destination)
+
+    places = load_places()
+    saved_place = find_item(places, item_id(place))
+    if saved_place is None:
+        await message.answer("место потерялось при сохранении, фото не привязала.")
+        return
+
+    photos = saved_place.get("photos")
+    if not isinstance(photos, list):
+        photos = []
+    photos.append(relative_path.as_posix())
+    saved_place["photos"] = photos
+    save_places(places)
+    await state.set_state(None)
+    await message.answer(f"добавила фото к месту: {saved_place.get('title')}", reply_markup=places_keyboard())
+
+
+@router.message(AdminState.waiting_for_place_photo)
+async def handle_admin_place_photo_wrong(message: Message) -> None:
+    await message.answer("жду именно фото с подписью-названием места.")
+
+
+@router.message(F.sticker)
+async def handle_sticker_id(message: Message) -> None:
+    if not is_admin_user(message.from_user):
+        await message.answer("стикер красивый, но я пока умею сохранять file_id только для Ани.")
+        return
+
+    await message.answer(
+        f"file_id стикера:\n`{message.sticker.file_id}`",
+        parse_mode="Markdown",
+    )
 
 
 @router.message(F.text == DAD_BUTTON)
@@ -1630,14 +2039,17 @@ async def handle_search_query(message: Message, state: FSMContext) -> None:
 
 @router.message(F.text == ALL_PLACES_BUTTON)
 async def handle_all_places(message: Message) -> None:
-    await send_places_dashboard(message, message.from_user.id if message.from_user else None)
+    await message.answer(
+        "как хочешь отфильтровать места?",
+        reply_markup=place_filter_home_keyboard(),
+    )
 
 
 @router.message(F.text == PLACE_SEARCH_BUTTON)
 async def handle_place_search_request(message: Message, state: FSMContext) -> None:
     await state.set_state(PlaceSearchState.waiting_for_query)
     await message.answer(
-        "напиши запрос: кофе у метро Китай-город, бар где я была, хочу сходить на бранч",
+        "напиши запрос: кофе у метро Китай-город, бар где Аня была, Аня хочет сходить на бранч",
         reply_markup=places_keyboard(),
     )
 
@@ -1856,10 +2268,28 @@ async def handle_recipe_favorite_toggle(callback: CallbackQuery) -> None:
 @router.callback_query(F.data == "places_home")
 async def handle_places_home_callback(callback: CallbackQuery) -> None:
     async def body() -> None:
-        await callback.message.answer(
-            "выбери подборку:",
-            reply_markup=place_filters_keyboard(load_places(), callback.from_user.id if callback.from_user else None),
-        )
+        await send_places_dashboard(callback.message, callback.from_user.id if callback.from_user else None)
+
+    await answer_or_alert(callback, body)
+
+
+@router.callback_query(F.data.startswith("place_group:"))
+async def handle_place_filter_group(callback: CallbackQuery) -> None:
+    places = load_places()
+    group = (callback.data or "").removeprefix("place_group:")
+
+    async def body() -> None:
+        if group == "status":
+            await callback.message.answer("выбери Анин список:", reply_markup=place_status_keyboard(places))
+            return
+        if group == "type":
+            await callback.message.answer("выбери формат места:", reply_markup=place_type_keyboard(places))
+            return
+        if group == "metro":
+            await callback.message.answer("выбери метро:", reply_markup=place_metro_keyboard(places))
+            return
+
+        await callback.message.answer("как хочешь отфильтровать места?", reply_markup=place_filter_home_keyboard())
 
     await answer_or_alert(callback, body)
 
@@ -1870,14 +2300,23 @@ async def handle_place_filter(callback: CallbackQuery) -> None:
     data = (callback.data or "").removeprefix("place_filter:")
     user_id = callback.from_user.id if callback.from_user else None
 
-    if data == "favorites":
+    if data == "all":
+        filtered_places = places
+        title = "все места"
+    elif data == "favorites":
         ids = favorite_ids("places", user_id)
         filtered_places = [place for place in places if item_id(place) in ids or place.get("favorite") is True]
-        title = "любимые места"
+        title = "любимые / рекомендации"
     elif data.startswith("status:"):
         status = data.removeprefix("status:")
         filtered_places = [place for place in places if place.get("status") == status]
         title = PLACE_STATUS_LABELS.get(status, status)
+    elif data.startswith("metro:"):
+        index_text = data.removeprefix("metro:")
+        metros = metro_filter_values(places)
+        metro = metros[int(index_text)] if index_text.isdigit() and int(index_text) < len(metros) else ""
+        filtered_places = [place for place in places if metro and metro in place.get("metro", [])]
+        title = f"метро {metro}" if metro else "метро"
     elif data.startswith("type:"):
         place_type = data.removeprefix("type:")
         filtered_places = [place for place in places if place_has_type(place, place_type)]
@@ -1901,7 +2340,7 @@ async def handle_place_filter(callback: CallbackQuery) -> None:
         )
         await callback.message.answer(
             "выбери место:",
-            reply_markup=place_list_keyboard(filtered_places[:PLACE_RESULT_LIMIT]),
+            reply_markup=place_list_keyboard(filtered_places[:PLACE_RESULT_LIMIT], back_callback="place_group:home"),
         )
 
     await answer_or_alert(callback, body)
@@ -2015,7 +2454,7 @@ async def handle_smart_text(message: Message, state: FSMContext) -> None:
 
 @router.message()
 async def handle_unknown(message: Message) -> None:
-    await message.answer("я пока понимаю текст, кнопки из меню и /start", reply_markup=main_keyboard())
+    await message.answer("я пока понимаю текст, кнопки из меню и /start", reply_markup=main_keyboard(message.from_user))
 
 
 async def main() -> None:
