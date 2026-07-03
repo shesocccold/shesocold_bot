@@ -81,14 +81,14 @@ METRO_LINE_EMOJIS = {
     "Курская": "🔵🟤",
     "Лубянка": "🔴",
     "Маяковская": "🟢",
-    "Менделеевская": "⚫",
+    "Менделеевская": "⚪",
     "Новокузнецкая": "🟢",
     "Новослободская": "🟤",
     "Октябрьская": "🟠🟤",
     "Охотный Ряд": "🔴",
     "Парк культуры": "🔴🟤",
     "Площадь Ильича": "🟡",
-    "Полянка": "⚫",
+    "Полянка": "⚪",
     "Пушкинская": "🟣",
     "Римская": "🟢",
     "Смоленская": "🔵",
@@ -101,8 +101,8 @@ METRO_LINE_EMOJIS = {
     "Трубная": "🟢",
     "Тургеневская": "🟠",
     "Фрунзенская": "🔴",
-    "Цветной бульвар": "⚫",
-    "Чеховская": "⚫",
+    "Цветной бульвар": "⚪",
+    "Чеховская": "⚪",
     "Чистые пруды": "🔴",
     "Чкаловская": "🟢",
 }
@@ -126,7 +126,7 @@ PLACE_TYPE_ALIASES = {
     "brunch": ["бранч", "завтрак", "яйца", "eggs", "breakfast"],
     "kebab": ["кебаб", "шаурма", "кебабы"],
     "pizzeria": ["пицца", "пиццерия"],
-    "asian": ["азиатское", "корея", "корейское", "китай", "китайское", "лапша"],
+    "asian": ["азиатское", "корея", "корейское", "китайское", "лапша"],
     "culture": ["культура", "культурное", "культурный"],
     "record_store": ["пластинки", "музыка", "record", "records"],
 }
@@ -1193,6 +1193,24 @@ def known_metros(places: list[dict[str, Any]]) -> list[str]:
     return sorted(metro, key=len, reverse=True)
 
 
+def metro_key(value: Any) -> str:
+    return compact_text(value).replace("ё", "е")
+
+
+def metro_matches_query(metro: Any, query: Any) -> bool:
+    metro_text = metro_key(metro)
+    query_text = metro_key(query)
+
+    if not metro_text or not query_text:
+        return False
+
+    return (
+        metro_text in query_text
+        or query_text in metro_text
+        or metro_text.replace(" ", "") in query_text.replace(" ", "")
+    )
+
+
 def extract_place_type(text: str) -> str | None:
     normalized_text = compact_text(text)
 
@@ -1225,14 +1243,18 @@ def extract_place_city(text: str, places: list[dict[str, Any]]) -> str | None:
 
 
 def extract_place_metro(text: str, places: list[dict[str, Any]]) -> str | None:
-    normalized_text = compact_text(text)
+    normalized_text = metro_key(text)
     for metro in known_metros(places):
-        if compact_text(metro) in normalized_text:
+        if metro_matches_query(metro, normalized_text):
             return metro
 
     match = re.search(r"(?:метро|м)\s+([a-zа-яё -]+)", normalize(text))
     if match:
-        return match.group(1).strip()
+        candidate = match.group(1).strip()
+        for metro in known_metros(places):
+            if metro_matches_query(metro, candidate):
+                return metro
+        return candidate
 
     return None
 
@@ -1304,11 +1326,11 @@ def apply_place_filters(places: list[dict[str, Any]], filters: dict[str, Any]) -
         filtered = [place for place in filtered if normalize(place.get("city")) == normalize(filters["city"])]
 
     if filters.get("metro"):
-        wanted_metro = compact_text(filters["metro"])
+        wanted_metro = str(filters["metro"])
         filtered = [
             place
             for place in filtered
-            if any(wanted_metro in compact_text(metro) for metro in place.get("metro", []))
+            if any(metro_matches_query(metro, wanted_metro) for metro in place.get("metro", []))
         ]
 
     if filters.get("favorite"):
@@ -1494,14 +1516,14 @@ async def send_place_result_list(
         return
 
     page = clamp_page(page, len(places), PLACE_RESULT_LIMIT)
-    header = title
+    page_text = "выбери место:"
     if len(places) > PLACE_RESULT_LIMIT:
-        header += f"\nстраница {page + 1}/{page_count(len(places), PLACE_RESULT_LIMIT)}"
+        page_text += f"\nстраница {page + 1}/{page_count(len(places), PLACE_RESULT_LIMIT)}"
 
     await save_place_result_ids(state, places, title, back_callback)
-    await message.answer(header, reply_markup=places_keyboard())
+    await message.answer(title, reply_markup=places_keyboard())
     await message.answer(
-        "выбери место:",
+        page_text,
         reply_markup=place_results_keyboard(places, page, back_callback),
     )
 
@@ -2653,10 +2675,12 @@ async def handle_place_results_page(callback: CallbackQuery, state: FSMContext) 
             return
 
         page_index = clamp_page(page, len(found), PLACE_RESULT_LIMIT)
-        await callback.message.answer(
-            f"{title}\nстраница {page_index + 1}/{page_count(len(found), PLACE_RESULT_LIMIT)}",
-            reply_markup=place_results_keyboard(found, page_index, back_callback),
-        )
+        page_text = f"выбери место:\nстраница {page_index + 1}/{page_count(len(found), PLACE_RESULT_LIMIT)}"
+        reply_markup = place_results_keyboard(found, page_index, back_callback)
+        try:
+            await callback.message.edit_text(page_text, reply_markup=reply_markup)
+        except Exception:
+            await callback.message.answer(page_text, reply_markup=reply_markup)
 
     await answer_or_alert(callback, body)
 
