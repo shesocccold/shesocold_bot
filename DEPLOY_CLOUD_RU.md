@@ -14,8 +14,8 @@ sudo apt install -y git python3 python3-venv
 ## 2. Скачать код
 
 ```bash
-cd /home/ubuntu
-git clone https://github.com/YOUR_USERNAME/shesocold_bot.git
+cd /home/shesocold
+git clone https://github.com/shesocccold/shesocold_bot.git
 cd shesocold_bot
 ```
 
@@ -57,7 +57,7 @@ sudo journalctl -u shesocold-bot -f
 ## 6. Обновлять код
 
 ```bash
-cd /home/ubuntu/shesocold_bot
+cd /home/shesocold/shesocold_bot
 git pull
 .venv/bin/pip install -r requirements.txt
 sudo systemctl restart shesocold-bot
