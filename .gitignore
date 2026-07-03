@@ -1,5 +1,6 @@
 .env
 favorites.json
+exports/
 *.db
 *.sqlite
 *.sqlite3

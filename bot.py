@@ -46,6 +46,7 @@ RANDOM_PLACE_BUTTON = "🎲 куда сходить"
 PLACE_FAVORITES_BUTTON = "⭐ любимые места"
 VISITED_PLACES_BUTTON = "✅ где я была"
 WISHLIST_PLACES_BUTTON = "📝 хочу сходить"
+PLACES_MAP_URL = "https://yandex.ru/maps/?um=constructor%3A2d5f7ca17c7cad37b342c0a2d3038a5b02563b904e5dfdb3bb4034bbcaa2f8b4&source=constructorLink"
 
 DAD_PASSWORD = "тома"
 DAD_CLUSTER_LABELS = {
@@ -1463,7 +1464,12 @@ def place_filters_keyboard(places: list[dict[str, Any]], user_id: int | None) ->
                 )
             )
 
-    return InlineKeyboardMarkup(inline_keyboard=chunk_buttons(buttons))
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text="🗺 общая карта мест", url=PLACES_MAP_URL)],
+            *chunk_buttons(buttons),
+        ]
+    )
 
 
 def place_list_keyboard(places: list[dict[str, Any]], back_callback: str = "places_home") -> InlineKeyboardMarkup:
