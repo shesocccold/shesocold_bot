@@ -46,8 +46,10 @@ INGREDIENTS_BUTTON = "🧺 что есть дома"
 ALL_BUTTON = "🧑‍🍳 все рецепты"
 RECIPE_FAVORITES_BUTTON = "⭐ любимые рецепты"
 
+PLACE_COLLECTIONS_BUTTON = "📚 подборки"
 ALL_PLACES_BUTTON = "📚 все места"
 PLACE_SEARCH_BUTTON = "🔎 найти место"
+PLACE_DECIDE_BUTTON = "🎲 выбрать / план"
 RANDOM_PLACE_BUTTON = "🎲 куда сходить"
 PLACE_PICK_BUTTON = "🎭 выбери за меня"
 TODAY_PLAN_BUTTON = "🗺 план на сегодня"
@@ -344,6 +346,18 @@ def is_admin_user(user: Any) -> bool:
     return bool(username and username in usernames)
 
 
+def start_text_for_user(user: Any) -> str:
+    base_text = (
+        "оставь надежду, всяк сюда входящий.\n\n"
+        "привет, я Анин бот. у меня ты можешь найти лучшие рецепты и лучшие места."
+    )
+    username = normalize(getattr(user, "username", ""))
+    if username == "usmargo":
+        return f"семпаааййййй привет.\n\n{base_text}"
+
+    return base_text
+
+
 def is_back_intent(text: str) -> bool:
     return compact_text(text) in {
         "назад",
@@ -378,7 +392,7 @@ def cooking_keyboard() -> ReplyKeyboardMarkup:
     return ReplyKeyboardMarkup(
         keyboard=[
             [KeyboardButton(text=DAD_BUTTON), KeyboardButton(text=RANDOM_BUTTON)],
-            [KeyboardButton(text=SEARCH_BUTTON), KeyboardButton(text=INGREDIENTS_BUTTON)],
+            [KeyboardButton(text=SEARCH_BUTTON)],
             [KeyboardButton(text=ALL_BUTTON), KeyboardButton(text=RECIPE_FAVORITES_BUTTON)],
             [KeyboardButton(text=BACK_BUTTON)],
         ],
@@ -390,10 +404,8 @@ def cooking_keyboard() -> ReplyKeyboardMarkup:
 def places_keyboard() -> ReplyKeyboardMarkup:
     return ReplyKeyboardMarkup(
         keyboard=[
-            [KeyboardButton(text=ALL_PLACES_BUTTON), KeyboardButton(text=PLACE_SEARCH_BUTTON)],
-            [KeyboardButton(text=RANDOM_PLACE_BUTTON), KeyboardButton(text=PLACE_PICK_BUTTON)],
-            [KeyboardButton(text=TODAY_PLAN_BUTTON), KeyboardButton(text=PLACE_FAVORITES_BUTTON)],
-            [KeyboardButton(text=VISITED_PLACES_BUTTON), KeyboardButton(text=WISHLIST_PLACES_BUTTON)],
+            [KeyboardButton(text=PLACE_COLLECTIONS_BUTTON), KeyboardButton(text=PLACE_SEARCH_BUTTON)],
+            [KeyboardButton(text=PLACE_DECIDE_BUTTON), KeyboardButton(text=PLACE_FAVORITES_BUTTON)],
             [KeyboardButton(text=BACK_BUTTON)],
         ],
         resize_keyboard=True,
@@ -414,8 +426,10 @@ def all_menu_buttons() -> set[str]:
         INGREDIENTS_BUTTON,
         ALL_BUTTON,
         RECIPE_FAVORITES_BUTTON,
+        PLACE_COLLECTIONS_BUTTON,
         ALL_PLACES_BUTTON,
         PLACE_SEARCH_BUTTON,
+        PLACE_DECIDE_BUTTON,
         RANDOM_PLACE_BUTTON,
         PLACE_PICK_BUTTON,
         TODAY_PLAN_BUTTON,
@@ -455,13 +469,17 @@ async def route_menu_button(message: Message, state: FSMContext, text: str) -> b
     elif text == SEARCH_BUTTON:
         await handle_search_request(message, state)
     elif text == INGREDIENTS_BUTTON:
-        await handle_ingredients_request(message, state)
+        await handle_search_request(message, state)
     elif text == RECIPE_FAVORITES_BUTTON:
         await handle_recipe_favorites(message, state)
+    elif text == PLACE_COLLECTIONS_BUTTON:
+        await handle_place_collections(message)
     elif text == ALL_PLACES_BUTTON:
         await handle_all_places(message)
     elif text == PLACE_SEARCH_BUTTON:
         await handle_place_search_request(message, state)
+    elif text == PLACE_DECIDE_BUTTON:
+        await handle_place_decide_request(message)
     elif text == RANDOM_PLACE_BUTTON:
         await handle_random_place(message)
     elif text == PLACE_PICK_BUTTON:
@@ -1212,7 +1230,7 @@ async def send_recipe_results(
 def place_search_text(place: dict[str, Any]) -> str:
     parts: list[str] = []
 
-    for key in ("title", "city", "address", "review", "url"):
+    for key in ("title", "city", "address", "review", "order", "what_to_order", "avoid", "what_to_skip", "url"):
         value = place.get(key)
         if isinstance(value, str):
             parts.append(value)
@@ -1463,6 +1481,8 @@ def format_place(place: dict[str, Any]) -> str:
     metro = place.get("metro", [])
     status = PLACE_STATUS_LABELS.get(str(place.get("status")), str(place.get("status") or "не указано"))
     review = str(place.get("review") or "").strip()
+    order = str(place.get("order") or place.get("what_to_order") or "").strip()
+    avoid = str(place.get("avoid") or place.get("what_to_skip") or "").strip()
     url = str(place.get("url") or "").strip()
     address = str(place.get("address") or "не указан")
     city = str(place.get("city") or "не указан")
@@ -1470,6 +1490,8 @@ def format_place(place: dict[str, Any]) -> str:
     type_text = ", ".join(PLACE_TYPE_LABELS.get(place_type, place_type) for place_type in types) if isinstance(types, list) else ""
     metro_text = ", ".join(metro_label(item) for item in metro) if isinstance(metro, list) and metro else "не указано"
     review_text = f"\nотзыв: {escape(review)}" if review else ""
+    order_text = f"\nчто брать: {escape(order)}" if order else ""
+    avoid_text = f"\nчто не брать: {escape(avoid)}" if avoid else ""
     map_text = f"\n<a href=\"{escape(url, quote=True)}\">место на Яндекс.Картах</a>" if url else ""
 
     return (
@@ -1480,6 +1502,8 @@ def format_place(place: dict[str, Any]) -> str:
         f"метро: {escape(metro_text)}\n"
         f"адрес: {escape(address)}"
         f"{review_text}"
+        f"{order_text}"
+        f"{avoid_text}"
         f"{map_text}"
     )
 
@@ -1623,7 +1647,7 @@ async def send_places_dashboard(message: Message, user_id: int | None = None) ->
         return
 
     await message.answer(
-        f"выбери подборку или напиши, что ищем.\n\nкарта всех мест: {places_map_url()}",
+        f"выбери папку или напиши запрос: город, метро, кофе, бар, где Аня была.\n\nкарта всех мест: {places_map_url()}",
         reply_markup=places_keyboard(),
     )
 
@@ -1835,11 +1859,42 @@ def place_filters_keyboard(places: list[dict[str, Any]], user_id: int | None) ->
 def place_filter_home_keyboard() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(
         inline_keyboard=[
-            [InlineKeyboardButton(text="по Аниным спискам", callback_data="place_group:status")],
-            [InlineKeyboardButton(text="по формату места", callback_data="place_group:type")],
-            [InlineKeyboardButton(text="по метро", callback_data="place_group:metro")],
-            [InlineKeyboardButton(text="мои любимые", callback_data="place_filter:favorites")],
             [InlineKeyboardButton(text="все места списком", callback_data="place_filter:all")],
+            [
+                InlineKeyboardButton(text="по городу", callback_data="place_group:city"),
+                InlineKeyboardButton(text="по метро", callback_data="place_group:metro"),
+            ],
+            [
+                InlineKeyboardButton(text="по формату места", callback_data="place_group:type"),
+                InlineKeyboardButton(text="по Аниным спискам", callback_data="place_group:status"),
+            ],
+            [InlineKeyboardButton(text="мои любимые", callback_data="place_filter:favorites")],
+        ]
+    )
+
+
+def place_collections_keyboard() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text="все места", callback_data="place_filter:all")],
+            [
+                InlineKeyboardButton(text="города", callback_data="place_group:city"),
+                InlineKeyboardButton(text="метро", callback_data="place_group:metro"),
+            ],
+            [
+                InlineKeyboardButton(text="форматы", callback_data="place_group:type"),
+                InlineKeyboardButton(text="Анины списки", callback_data="place_group:status"),
+            ],
+        ]
+    )
+
+
+def place_decide_keyboard() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text="🎲 рандомное место", callback_data="place_decide:random")],
+            [InlineKeyboardButton(text="🎭 выбери за меня", callback_data="place_decide:pick")],
+            [InlineKeyboardButton(text="🗺 план кофе → еда → бар", callback_data="place_decide:plan")],
         ]
     )
 
@@ -1872,6 +1927,24 @@ def place_type_keyboard(places: list[dict[str, Any]]) -> InlineKeyboardMarkup:
             buttons.append(InlineKeyboardButton(text=f"{label} ({count})", callback_data=f"place_filter:type:{place_type}"))
 
     keyboard = chunk_buttons(buttons)
+    keyboard.append([InlineKeyboardButton(text="назад", callback_data="place_group:home")])
+    return InlineKeyboardMarkup(inline_keyboard=keyboard)
+
+
+def city_filter_values(places: list[dict[str, Any]]) -> list[str]:
+    return sorted({str(place.get("city")) for place in places if place.get("city")})
+
+
+def place_city_keyboard(places: list[dict[str, Any]]) -> InlineKeyboardMarkup:
+    buttons = [
+        InlineKeyboardButton(
+            text=f"{city} ({sum(1 for place in places if normalize(place.get('city')) == normalize(city))})",
+            callback_data=f"place_filter:city:{index}",
+        )
+        for index, city in enumerate(city_filter_values(places))
+    ]
+
+    keyboard = chunk_buttons(buttons, size=1)
     keyboard.append([InlineKeyboardButton(text="назад", callback_data="place_group:home")])
     return InlineKeyboardMarkup(inline_keyboard=keyboard)
 
@@ -1994,6 +2067,11 @@ def parse_admin_fields(text: str) -> dict[str, str]:
         "отзыв": "review",
         "коммент": "review",
         "город": "city",
+        "что брать": "order",
+        "брать": "order",
+        "заказывать": "order",
+        "что не брать": "avoid",
+        "не брать": "avoid",
     }
     fields: dict[str, str] = {}
 
@@ -2163,6 +2241,8 @@ def build_admin_place(text: str) -> tuple[dict[str, Any] | None, str]:
         "favorite": False,
         "tags": [],
         "review": fields.get("review", ""),
+        "order": fields.get("order", ""),
+        "avoid": fields.get("avoid", ""),
         "photos": [],
         "url": fields.get("url", ""),
     }
@@ -2224,8 +2304,7 @@ async def handle_start(message: Message, state: FSMContext) -> None:
             print(f"не удалось отправить стартовый стикер: {error}")
 
     await message.answer(
-        "оставь надежду, всяк сюда входящий.\n\n"
-        "привет, я Анин бот. у меня ты можешь найти лучшие рецепты и лучшие места.",
+        start_text_for_user(message.from_user),
         reply_markup=main_keyboard(message.from_user),
     )
 
@@ -2242,7 +2321,10 @@ async def handle_back(message: Message, state: FSMContext) -> None:
 @router.message(F.text == COOKING_BUTTON)
 async def handle_cooking_home(message: Message, state: FSMContext) -> None:
     await state.set_state(None)
-    await message.answer("что сегодня делаем?", reply_markup=cooking_keyboard())
+    await message.answer(
+        "что сегодня делаем? можно написать продукты дома или выбрать кнопку ниже.",
+        reply_markup=cooking_keyboard(),
+    )
 
 
 @router.message(F.text == PLACES_BUTTON)
@@ -2289,7 +2371,9 @@ async def handle_admin_callback(callback: CallbackQuery, state: FSMContext) -> N
                 "статус: хочу\n"
                 "тип: кофе, кафе\n"
                 "метро: Китай-город\n"
-                "отзыв: вайб на спокойный кофе"
+                "отзыв: вайб на спокойный кофе\n"
+                "что брать: фильтр, сырники\n"
+                "что не брать: матчу"
             )
             return
 
@@ -2523,18 +2607,14 @@ async def handle_all_recipes(message: Message, state: FSMContext) -> None:
 async def handle_search_request(message: Message, state: FSMContext) -> None:
     await state.set_state(SearchState.waiting_for_query)
     await message.answer(
-        "напиши запрос: курица, ужин до 600 ккал, без бекона, белка больше 20",
+        "напиши запрос или продукты дома: курица, яйца сыр хлеб, ужин до 600 ккал, без бекона, белка больше 20",
         reply_markup=cooking_keyboard(),
     )
 
 
 @router.message(F.text == INGREDIENTS_BUTTON)
 async def handle_ingredients_request(message: Message, state: FSMContext) -> None:
-    await state.set_state(IngredientSearchState.waiting_for_query)
-    await message.answer(
-        "напиши, что есть дома: яйца, сыр, помидоры. я попробую собрать рецепты по ингредиентам.",
-        reply_markup=cooking_keyboard(),
-    )
+    await handle_search_request(message, state)
 
 
 @router.message(F.text == RECIPE_FAVORITES_BUTTON)
@@ -2590,6 +2670,14 @@ async def handle_ingredients_query(message: Message, state: FSMContext) -> None:
     )
 
 
+@router.message(F.text == PLACE_COLLECTIONS_BUTTON)
+async def handle_place_collections(message: Message) -> None:
+    await message.answer(
+        "что открываем? можно смотреть всё подряд или сузить по городу, метро, формату и Аниным спискам.",
+        reply_markup=place_collections_keyboard(),
+    )
+
+
 @router.message(F.text == ALL_PLACES_BUTTON)
 async def handle_all_places(message: Message) -> None:
     await message.answer(
@@ -2602,8 +2690,16 @@ async def handle_all_places(message: Message) -> None:
 async def handle_place_search_request(message: Message, state: FSMContext) -> None:
     await state.set_state(PlaceSearchState.waiting_for_query)
     await message.answer(
-        "напиши запрос: кофе у метро Китай-город, бар где Аня была, Аня хочет сходить на бранч",
+        "напиши запрос: Москва кофе, метро Китай-город, бар где Аня была, Аня хочет сходить на бранч",
         reply_markup=places_keyboard(),
+    )
+
+
+@router.message(F.text == PLACE_DECIDE_BUTTON)
+async def handle_place_decide_request(message: Message) -> None:
+    await message.answer(
+        "если не хочется выбирать руками, я могу ткнуть рандом, подобрать по вайбу или собрать мини-план.",
+        reply_markup=place_decide_keyboard(),
     )
 
 
@@ -2909,6 +3005,38 @@ async def handle_places_home_callback(callback: CallbackQuery) -> None:
     await answer_or_alert(callback, body)
 
 
+@router.callback_query(F.data.startswith("place_decide:"))
+async def handle_place_decide(callback: CallbackQuery, state: FSMContext) -> None:
+    action = (callback.data or "").removeprefix("place_decide:")
+    places = load_places()
+
+    async def body() -> None:
+        if not places:
+            await callback.message.answer("мест пока нет", reply_markup=places_keyboard())
+            return
+
+        if action == "random":
+            await callback.message.answer("я бы сходила сюда:", reply_markup=places_keyboard())
+            await send_place(callback.message, random.choice(places), callback.from_user.id if callback.from_user else None)
+            return
+
+        if action == "pick":
+            await callback.message.answer("какой вайб выбираем?", reply_markup=place_pick_keyboard())
+            return
+
+        if action == "plan":
+            await state.set_state(PlacePlanState.waiting_for_query)
+            await callback.message.answer(
+                "напиши город, метро или район. можно просто «любой», и я соберу кофе → еда → бар.",
+                reply_markup=places_keyboard(),
+            )
+            return
+
+        await callback.message.answer("выбери способ:", reply_markup=place_decide_keyboard())
+
+    await answer_or_alert(callback, body)
+
+
 @router.callback_query(F.data.startswith("place_pick:"))
 async def handle_place_pick(callback: CallbackQuery) -> None:
     scope = (callback.data or "").removeprefix("place_pick:")
@@ -2933,6 +3061,9 @@ async def handle_place_filter_group(callback: CallbackQuery) -> None:
     group = (callback.data or "").removeprefix("place_group:")
 
     async def body() -> None:
+        if group == "city":
+            await callback.message.answer("выбери город:", reply_markup=place_city_keyboard(places))
+            return
         if group == "status":
             await callback.message.answer("выбери Анин список:", reply_markup=place_status_keyboard(places))
             return
@@ -2965,6 +3096,12 @@ async def handle_place_filter(callback: CallbackQuery, state: FSMContext) -> Non
         status = data.removeprefix("status:")
         filtered_places = [place for place in places if place.get("status") == status]
         title = PLACE_STATUS_LABELS.get(status, status)
+    elif data.startswith("city:"):
+        index_text = data.removeprefix("city:")
+        cities = city_filter_values(places)
+        city = cities[int(index_text)] if index_text.isdigit() and int(index_text) < len(cities) else ""
+        filtered_places = [place for place in places if city and normalize(place.get("city")) == normalize(city)]
+        title = city or "город"
     elif data.startswith("metro:"):
         index_text = data.removeprefix("metro:")
         metros = metro_filter_values(places)
