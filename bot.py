@@ -47,9 +47,12 @@ ALL_BUTTON = "🧑‍🍳 все рецепты"
 RECIPE_FAVORITES_BUTTON = "⭐ любимые рецепты"
 
 PLACE_COLLECTIONS_BUTTON = "📚 подборки"
-ALL_PLACES_BUTTON = "📚 все места"
-PLACE_SEARCH_BUTTON = "🔎 найти место"
-PLACE_DECIDE_BUTTON = "🎲 выбрать / план"
+ALL_PLACES_BUTTON = "📍 все места"
+ALL_PLACES_BUTTON_ALIASES = {ALL_PLACES_BUTTON, "📚 все места"}
+PLACE_SEARCH_BUTTON = "🔎 найти / рандом"
+PLACE_SEARCH_BUTTON_ALIASES = {PLACE_SEARCH_BUTTON, "🔎 найти место"}
+PLACE_DECIDE_BUTTON = "✨ помоги выбрать"
+PLACE_DECIDE_BUTTON_ALIASES = {PLACE_DECIDE_BUTTON, "🎲 выбрать / план"}
 RANDOM_PLACE_BUTTON = "🎲 куда сходить"
 PLACE_PICK_BUTTON = "🎭 выбери за меня"
 TODAY_PLAN_BUTTON = "🗺 план на сегодня"
@@ -139,6 +142,12 @@ PLACE_TYPE_ALIASES = {
 }
 PLACE_RESULT_LIMIT = 10
 RECIPE_RESULT_LIMIT = 10
+PLAN_METRO_PAGE_SIZE = 8
+USER_NAME_OVERRIDES = {
+    "shesocold": "Аня",
+    "shesocccold": "Аня",
+    "usmargo": "Марго",
+}
 BROAD_PLACE_QUERIES = {
     "места",
     "место",
@@ -161,8 +170,17 @@ PLAN_STEP_DEFINITIONS: list[dict[str, Any]] = [
         "key": "food",
         "label": "поесть",
         "icon": "🍽",
-        "types": {"restaurant", "cafe", "asian", "kebab", "pizzeria", "brunch"},
-        "aliases": ("еда", "поесть", "обед", "пообедать", "ужин", "поужинать", "ресторан", "пицца", "кебаб", "шаурма", "лапша", "азиатское", "корейское"),
+        "types": {"restaurant", "asian", "kebab", "pizzeria", "brunch"},
+        "fallback_types": {"cafe"},
+        "aliases": ("еда", "поесть", "обед", "пообедать", "пицца", "кебаб", "шаурма", "лапша", "азиатское", "корейское"),
+    },
+    {
+        "key": "dinner",
+        "label": "ужин",
+        "icon": "🍽",
+        "types": {"restaurant", "asian", "kebab", "pizzeria"},
+        "fallback_types": {"cafe"},
+        "aliases": ("ужин", "поужинать", "ресторан", "ресторанчик"),
     },
     {
         "key": "brunch",
@@ -190,6 +208,18 @@ PLAN_STEP_DEFINITIONS: list[dict[str, Any]] = [
 DEFAULT_PLAN_STEP_KEYS = ("coffee", "food", "bar")
 PLAN_NEGATION_WORDS = {"без", "кроме"}
 PLAN_NEGATION_TAILS = {"надо", "нужен", "нужна", "нужно", "хочу", "хочется"}
+PLAN_ANY_AREA_QUERIES = {
+    "любой",
+    "любое",
+    "любой район",
+    "любое метро",
+    "все равно",
+    "куда угодно",
+    "без разницы",
+    "рандом",
+    "случайно",
+    "не знаю",
+}
 
 STOPWORDS = {
     "а",
@@ -358,6 +388,7 @@ class PlaceSearchState(StatesGroup):
 
 class PlacePlanState(StatesGroup):
     waiting_for_query = State()
+    waiting_for_area = State()
 
 
 class DadState(StatesGroup):
@@ -389,16 +420,30 @@ def is_admin_user(user: Any) -> bool:
     return bool(username and username in usernames)
 
 
+def user_greeting_name(user: Any) -> str:
+    if user is None:
+        return ""
+
+    username = normalize(getattr(user, "username", ""))
+    if username in USER_NAME_OVERRIDES:
+        return USER_NAME_OVERRIDES[username]
+
+    first_name = str(getattr(user, "first_name", "") or "").strip()
+    return first_name
+
+
 def start_text_for_user(user: Any) -> str:
-    base_text = (
-        "оставь надежду, всяк сюда входящий.\n\n"
-        "привет, я Анин бот. у меня ты можешь найти лучшие рецепты и лучшие места."
+    name = user_greeting_name(user)
+    text = (
+        f"привет, {name}, я Анин бот. у меня ты можешь найти лучшие рецепты и лучшие места."
+        if name
+        else "привет, я Анин бот. у меня ты можешь найти лучшие рецепты и лучшие места."
     )
     username = normalize(getattr(user, "username", ""))
     if username == "usmargo":
-        return f"семпаааййййй привет.\n\n{base_text}"
+        return f"семпаааййййй привет.\n\n{text}"
 
-    return base_text
+    return text
 
 
 def is_back_intent(text: str) -> bool:
@@ -448,7 +493,7 @@ def places_keyboard() -> ReplyKeyboardMarkup:
     return ReplyKeyboardMarkup(
         keyboard=[
             [KeyboardButton(text=PLACE_COLLECTIONS_BUTTON), KeyboardButton(text=PLACE_SEARCH_BUTTON)],
-            [KeyboardButton(text=PLACE_DECIDE_BUTTON), KeyboardButton(text=PLACE_FAVORITES_BUTTON)],
+            [KeyboardButton(text=PLACE_FAVORITES_BUTTON), KeyboardButton(text=ALL_PLACES_BUTTON)],
             [KeyboardButton(text=BACK_BUTTON)],
         ],
         resize_keyboard=True,
@@ -470,9 +515,9 @@ def all_menu_buttons() -> set[str]:
         ALL_BUTTON,
         RECIPE_FAVORITES_BUTTON,
         PLACE_COLLECTIONS_BUTTON,
-        ALL_PLACES_BUTTON,
-        PLACE_SEARCH_BUTTON,
-        PLACE_DECIDE_BUTTON,
+        *ALL_PLACES_BUTTON_ALIASES,
+        *PLACE_SEARCH_BUTTON_ALIASES,
+        *PLACE_DECIDE_BUTTON_ALIASES,
         RANDOM_PLACE_BUTTON,
         PLACE_PICK_BUTTON,
         TODAY_PLAN_BUTTON,
@@ -517,11 +562,11 @@ async def route_menu_button(message: Message, state: FSMContext, text: str) -> b
         await handle_recipe_favorites(message, state)
     elif text == PLACE_COLLECTIONS_BUTTON:
         await handle_place_collections(message)
-    elif text == ALL_PLACES_BUTTON:
+    elif text in ALL_PLACES_BUTTON_ALIASES:
         await handle_all_places(message)
-    elif text == PLACE_SEARCH_BUTTON:
+    elif text in PLACE_SEARCH_BUTTON_ALIASES:
         await handle_place_search_request(message, state)
-    elif text == PLACE_DECIDE_BUTTON:
+    elif text in PLACE_DECIDE_BUTTON_ALIASES:
         await handle_place_decide_request(message)
     elif text == RANDOM_PLACE_BUTTON:
         await handle_random_place(message)
@@ -1566,30 +1611,13 @@ def place_has_any_type(place: dict[str, Any], place_types: set[str]) -> bool:
     return any(place_has_type(place, place_type) for place_type in place_types)
 
 
-def place_pick_keyboard() -> InlineKeyboardMarkup:
-    return InlineKeyboardMarkup(
-        inline_keyboard=[
-            [
-                InlineKeyboardButton(text="☕ кофе", callback_data="place_pick:coffee"),
-                InlineKeyboardButton(text="🍽 поесть", callback_data="place_pick:food"),
-            ],
-            [
-                InlineKeyboardButton(text="🍸 бар", callback_data="place_pick:bar"),
-                InlineKeyboardButton(text="🫦 где Аня была", callback_data="place_pick:visited"),
-            ],
-            [
-                InlineKeyboardButton(text="📝 куда Аня хочет", callback_data="place_pick:wishlist"),
-                InlineKeyboardButton(text="🎲 любой вайб", callback_data="place_pick:any"),
-            ],
-        ]
-    )
-
-
 def places_by_pick_scope(places: list[dict[str, Any]], scope: str) -> list[dict[str, Any]]:
     if scope == "coffee":
-        return [place for place in places if place_has_any_type(place, {"coffee", "cafe", "brunch"})]
+        coffee_places = [place for place in places if place_has_type(place, "coffee")]
+        return coffee_places or [place for place in places if place_has_any_type(place, {"cafe", "brunch"})]
     if scope == "food":
-        return [place for place in places if place_has_any_type(place, {"restaurant", "cafe", "asian", "kebab", "pizzeria", "brunch"})]
+        food_places = [place for place in places if place_has_any_type(place, {"restaurant", "asian", "kebab", "pizzeria", "brunch"})]
+        return food_places or [place for place in places if place_has_type(place, "cafe")]
     if scope == "bar":
         return [place for place in places if place_has_type(place, "bar")]
     if scope == "visited":
@@ -1612,7 +1640,20 @@ def place_link(place: dict[str, Any]) -> str:
 def place_plan_line(label: str, place: dict[str, Any]) -> str:
     metro = place.get("metro", [])
     metro_text = ", ".join(metro_label(item) for item in metro) if isinstance(metro, list) and metro else "метро не записано"
-    return f"{label}: {place_link(place)}\n   метро: {escape(metro_text)}"
+    types = place.get("types", [])
+    type_text = ", ".join(PLACE_TYPE_LABELS.get(place_type, place_type) for place_type in types) if isinstance(types, list) else ""
+    status = PLACE_STATUS_LABELS.get(str(place.get("status")), str(place.get("status") or "не указано"))
+    review = str(place.get("review") or "").strip()
+    lines = [
+        f"{label}: {place_link(place)}",
+        f"   статус: {escape(status)}",
+        f"   формат: {escape(type_text or 'не указан')}",
+        f"   метро: {escape(metro_text)}",
+    ]
+    if review:
+        lines.append(f"   отзыв: {escape(review)}")
+
+    return "\n".join(lines)
 
 
 def choose_distinct_place(candidates: list[dict[str, Any]], used_ids: set[str]) -> dict[str, Any] | None:
@@ -1625,6 +1666,67 @@ def choose_distinct_place(candidates: list[dict[str, Any]], used_ids: set[str]) 
 
 def plan_step_by_key(key: str) -> dict[str, Any] | None:
     return next((step for step in PLAN_STEP_DEFINITIONS if step["key"] == key), None)
+
+
+def is_any_area_request(text: str) -> bool:
+    return compact_text(text) in PLAN_ANY_AREA_QUERIES
+
+
+def place_metro_names(place: dict[str, Any]) -> set[str]:
+    metro = place.get("metro")
+    if not isinstance(metro, list):
+        return set()
+
+    return {str(item) for item in metro if item}
+
+
+def plan_step_candidates(places: list[dict[str, Any]], step: dict[str, Any]) -> list[dict[str, Any]]:
+    primary_types = set(step.get("types", set()))
+    fallback_types = set(step.get("fallback_types", set()))
+    primary = [place for place in places if place_has_any_type(place, primary_types)]
+    if primary or not fallback_types:
+        return primary
+
+    return [place for place in places if place_has_any_type(place, fallback_types)]
+
+
+def choose_plan_metro(candidates_by_step: list[list[dict[str, Any]]]) -> str | None:
+    scores: dict[str, tuple[int, int]] = {}
+
+    for candidates in candidates_by_step:
+        step_metros: set[str] = set()
+        for place in candidates:
+            step_metros.update(place_metro_names(place))
+
+        for metro in step_metros:
+            coverage, amount = scores.get(metro, (0, 0))
+            scores[metro] = (coverage + 1, amount + sum(1 for place in candidates if metro in place_metro_names(place)))
+
+    if not scores:
+        return None
+
+    best_score = max(scores.values())
+    best_metros = [metro for metro, score in scores.items() if score == best_score]
+    return random.choice(best_metros)
+
+
+def choose_plan_place(
+    candidates: list[dict[str, Any]],
+    used_ids: set[str],
+    preferred_metro: str | None,
+) -> dict[str, Any] | None:
+    if preferred_metro:
+        candidates = [place for place in candidates if preferred_metro in place_metro_names(place)]
+
+    return choose_distinct_place(candidates, used_ids)
+
+
+def should_ask_plan_area(text: str, places: list[dict[str, Any]]) -> bool:
+    if is_any_area_request(text):
+        return False
+
+    filters = parse_place_filters(text, places)
+    return not filters.get("metro")
 
 
 def alias_stems(alias: str) -> list[str]:
@@ -1691,10 +1793,10 @@ def requested_plan_steps(text: str) -> list[dict[str, Any]]:
     return [step for key in unique_keys if (step := plan_step_by_key(key)) is not None]
 
 
-def plan_scope_from_text(text: str, places: list[dict[str, Any]]) -> tuple[list[dict[str, Any]], str, bool]:
+def plan_scope_from_text(text: str, places: list[dict[str, Any]]) -> tuple[list[dict[str, Any]], str, bool, dict[str, Any]]:
     normalized = compact_text(text)
-    if not normalized or normalized in {"любой", "любое", "все равно", "куда угодно", "без разницы"}:
-        return places, "без привязки к метро", False
+    if not normalized or is_any_area_request(text):
+        return places, "без привязки к метро", False, {}
 
     filters = parse_place_filters(text, places)
     scope_filters = {
@@ -1711,32 +1813,34 @@ def plan_scope_from_text(text: str, places: list[dict[str, Any]]) -> tuple[list[
     scoped = apply_place_filters(places, scope_filters) if has_scope else places
     if scoped:
         summary = place_filter_summary(scope_filters) or "по твоему запросу"
-        return scoped, summary, has_scope
+        return scoped, summary, has_scope, scope_filters
 
-    return [], "по этой зоне ничего не нашла", has_scope
+    return [], "по этой зоне ничего не нашла", has_scope, scope_filters
 
 
 def build_today_plan(places: list[dict[str, Any]], text: str) -> tuple[str, list[dict[str, Any]]]:
-    scoped_places, scope_text, has_scope = plan_scope_from_text(text, places)
+    scoped_places, scope_text, has_scope, scope_filters = plan_scope_from_text(text, places)
     used_ids: set[str] = set()
     steps = requested_plan_steps(text)
+    step_candidates: list[list[dict[str, Any]]] = []
     selected: list[tuple[str, dict[str, Any]]] = []
     missing: list[str] = []
 
+    for step in steps:
+        candidates = plan_step_candidates(scoped_places, step)
+        if not candidates and not has_scope:
+            candidates = plan_step_candidates(places, step)
+        step_candidates.append(candidates)
+
+    preferred_metro = str(scope_filters.get("metro") or "").strip() or choose_plan_metro(step_candidates)
+    if preferred_metro and not scope_filters.get("metro"):
+        scope_text = f"связала вокруг метро {metro_label(preferred_metro)}"
+
     for index, step in enumerate(steps, start=1):
         label = str(step["label"])
-        place_types = set(step["types"])
-        fallback_types = set(step.get("fallback_types", set()))
         icon = str(step["icon"])
-        candidates = [place for place in scoped_places if place_has_any_type(place, place_types)]
-        if not candidates and fallback_types:
-            candidates = [place for place in scoped_places if place_has_any_type(place, fallback_types)]
-        if not candidates and not has_scope:
-            candidates = [place for place in places if place_has_any_type(place, place_types)]
-            if not candidates and fallback_types:
-                candidates = [place for place in places if place_has_any_type(place, fallback_types)]
-
-        chosen = choose_distinct_place(candidates, used_ids)
+        candidates = step_candidates[index - 1] if index - 1 < len(step_candidates) else []
+        chosen = choose_plan_place(candidates, used_ids, preferred_metro)
         if chosen is None:
             missing.append(label)
             continue
@@ -1751,6 +1855,63 @@ def build_today_plan(places: list[dict[str, Any]], text: str) -> tuple[str, list
         lines.append("не нашла под запрос: " + escape(", ".join(missing)))
 
     return "\n\n".join(lines), [place for _, place in selected]
+
+
+async def send_today_plan(message: Message, places: list[dict[str, Any]], text: str) -> None:
+    plan_text, _ = build_today_plan(places, text)
+    await message.answer(plan_text, parse_mode="HTML", reply_markup=places_keyboard())
+
+
+def single_scope_label(scope: str) -> str:
+    labels = {
+        "coffee": "кофе",
+        "food": "поесть",
+        "bar": "бар",
+        "visited": "где Аня была",
+        "wishlist": "куда Аня хочет",
+        "any": "любой вайб",
+    }
+    return labels.get(scope, "место")
+
+
+async def send_single_place_choice(
+    message: Message,
+    places: list[dict[str, Any]],
+    scope: str,
+    user_id: int | None,
+    metro: str | None = None,
+) -> None:
+    candidates = places_by_pick_scope(places, scope)
+    if metro:
+        candidates = [place for place in candidates if metro in place_metro_names(place)]
+
+    if not candidates:
+        metro_text = f" у метро {metro_label(metro)}" if metro else ""
+        await message.answer(
+            f"не нашла вариант «{single_scope_label(scope)}»{metro_text}. попробуй другое метро или любое метро.",
+            reply_markup=places_keyboard(),
+        )
+        return
+
+    if metro:
+        await message.answer(f"я бы выбрала вот это у метро {metro_label(metro)}:", reply_markup=places_keyboard())
+    else:
+        await message.answer("я бы выбрала вот это:", reply_markup=places_keyboard())
+    await send_place(message, random.choice(candidates), user_id)
+
+
+async def ask_single_place_area(
+    message: Message,
+    state: FSMContext,
+    places: list[dict[str, Any]],
+    scope: str,
+) -> None:
+    await state.update_data(pending_single_scope=scope, pending_plan_text="")
+    await state.set_state(PlacePlanState.waiting_for_area)
+    await message.answer(
+        f"окей, {single_scope_label(scope)}. где примерно? можно выбрать метро из подходящих или нажать «любое метро».",
+        reply_markup=plan_area_keyboard(pending_area_places(places, {"pending_single_scope": scope})),
+    )
 
 
 async def send_place(message: Message, place: dict[str, Any], user_id: int | None = None) -> None:
@@ -1917,10 +2078,6 @@ def all_categories_keyboard(recipes: list[dict[str, Any]]) -> InlineKeyboardMark
     if hard_count:
         buttons.append(InlineKeyboardButton(text=f"🍲 посложнее ({hard_count})", callback_data="category:special:hard"))
 
-    photo_count = sum(1 for recipe in recipes if isinstance(recipe.get("image"), str))
-    if photo_count:
-        buttons.append(InlineKeyboardButton(text=f"📸 с фото ({photo_count})", callback_data="category:special:photo"))
-
     protein_count = sum(1 for recipe in recipes if (nutrition_value(recipe, "protein") or 0) >= 20)
     if protein_count:
         buttons.append(InlineKeyboardButton(text=f"💪 белка побольше ({protein_count})", callback_data="category:special:protein"))
@@ -1987,11 +2144,11 @@ def place_filter_home_keyboard() -> InlineKeyboardMarkup:
             [InlineKeyboardButton(text="все места списком", callback_data="place_filter:all")],
             [
                 InlineKeyboardButton(text="по городу", callback_data="place_group:city"),
-                InlineKeyboardButton(text="по метро", callback_data="place_group:metro"),
+                InlineKeyboardButton(text="по формату", callback_data="place_group:type"),
             ],
             [
-                InlineKeyboardButton(text="по формату места", callback_data="place_group:type"),
-                InlineKeyboardButton(text="по Аниным спискам", callback_data="place_group:status"),
+                InlineKeyboardButton(text="по метро", callback_data="place_group:metro"),
+                InlineKeyboardButton(text="Анины списки", callback_data="place_group:status"),
             ],
             [InlineKeyboardButton(text="мои любимые", callback_data="place_filter:favorites")],
         ]
@@ -2003,11 +2160,11 @@ def place_collections_keyboard() -> InlineKeyboardMarkup:
         inline_keyboard=[
             [InlineKeyboardButton(text="все места", callback_data="place_filter:all")],
             [
-                InlineKeyboardButton(text="города", callback_data="place_group:city"),
-                InlineKeyboardButton(text="метро", callback_data="place_group:metro"),
+                InlineKeyboardButton(text="город", callback_data="place_group:city"),
+                InlineKeyboardButton(text="формат", callback_data="place_group:type"),
             ],
             [
-                InlineKeyboardButton(text="форматы", callback_data="place_group:type"),
+                InlineKeyboardButton(text="метро", callback_data="place_group:metro"),
                 InlineKeyboardButton(text="Анины списки", callback_data="place_group:status"),
             ],
         ]
@@ -2017,9 +2174,43 @@ def place_collections_keyboard() -> InlineKeyboardMarkup:
 def place_decide_keyboard() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(
         inline_keyboard=[
-            [InlineKeyboardButton(text="🎲 рандомное место", callback_data="place_decide:random")],
-            [InlineKeyboardButton(text="🎭 выбери за меня", callback_data="place_decide:pick")],
-            [InlineKeyboardButton(text="🗺 план кофе → еда → бар", callback_data="place_decide:plan")],
+            [
+                InlineKeyboardButton(text="☝️ одно место", callback_data="place_decide:single"),
+                InlineKeyboardButton(text="🗺 мини-план", callback_data="place_decide:plan"),
+            ],
+            [InlineKeyboardButton(text="🎲 совсем рандом", callback_data="place_decide:random")],
+        ]
+    )
+
+
+def single_place_scope_keyboard() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(text="☕ кофе", callback_data="single_place:coffee"),
+                InlineKeyboardButton(text="🍽 поесть", callback_data="single_place:food"),
+            ],
+            [
+                InlineKeyboardButton(text="🍸 бар", callback_data="single_place:bar"),
+                InlineKeyboardButton(text="🫦 где Аня была", callback_data="single_place:visited"),
+            ],
+            [
+                InlineKeyboardButton(text="📝 куда Аня хочет", callback_data="single_place:wishlist"),
+                InlineKeyboardButton(text="🎲 любой вайб", callback_data="single_place:any"),
+            ],
+        ]
+    )
+
+
+def place_search_random_keyboard() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text="🎲 любое место", callback_data="place_decide:random")],
+            [
+                InlineKeyboardButton(text="☕ рандом кофе", callback_data="single_place:coffee"),
+                InlineKeyboardButton(text="🍽 рандом еда", callback_data="single_place:food"),
+            ],
+            [InlineKeyboardButton(text="🍸 рандом бар", callback_data="single_place:bar")],
         ]
     )
 
@@ -2111,6 +2302,85 @@ def top_metros_for_places(places: list[dict[str, Any]], limit: int = 8) -> list[
         metro
         for metro, _ in sorted(counts.items(), key=lambda item: (-item[1], item[0]))[:limit]
     ]
+
+
+def plan_area_candidate_places(places: list[dict[str, Any]], text: str) -> list[dict[str, Any]]:
+    steps = requested_plan_steps(text)
+    if not steps:
+        return places
+
+    candidates_by_step = [plan_step_candidates(places, step) for step in steps]
+    metro_coverage: dict[str, int] = {}
+    for candidates in candidates_by_step:
+        step_metros: set[str] = set()
+        for place in candidates:
+            step_metros.update(place_metro_names(place))
+        for metro in step_metros:
+            metro_coverage[metro] = metro_coverage.get(metro, 0) + 1
+
+    full_match_metros = {metro for metro, coverage in metro_coverage.items() if coverage == len(steps)}
+    all_candidates = [place for candidates in candidates_by_step for place in candidates]
+    if full_match_metros:
+        return [place for place in all_candidates if place_metro_names(place) & full_match_metros]
+
+    return all_candidates or places
+
+
+def pending_area_places(places: list[dict[str, Any]], data: dict[str, Any]) -> list[dict[str, Any]]:
+    single_scope = str(data.get("pending_single_scope") or "").strip()
+    if single_scope:
+        return places_by_pick_scope(places, single_scope)
+
+    pending_text = str(data.get("pending_plan_text") or "").strip()
+    if pending_text:
+        return plan_area_candidate_places(places, pending_text)
+
+    return places
+
+
+def plan_area_keyboard(places: list[dict[str, Any]]) -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text="🎲 любое метро", callback_data="plan_area:any")],
+            [InlineKeyboardButton(text="🚇 выбрать метро", callback_data="plan_area:choose")],
+        ]
+    )
+
+
+def plan_metro_page_text(places: list[dict[str, Any]], page: int) -> str:
+    metros = metro_filter_values(places)
+    page = clamp_page(page, len(metros), PLAN_METRO_PAGE_SIZE)
+    return (
+        "выбери метро или напиши его текстом.\n"
+        f"страница {page + 1}/{page_count(len(metros), PLAN_METRO_PAGE_SIZE)}"
+    )
+
+
+def plan_metro_keyboard(places: list[dict[str, Any]], page: int = 0) -> InlineKeyboardMarkup:
+    metros = metro_filter_values(places)
+    page = clamp_page(page, len(metros), PLAN_METRO_PAGE_SIZE)
+    start = page * PLAN_METRO_PAGE_SIZE
+    end = start + PLAN_METRO_PAGE_SIZE
+    keyboard = [
+        [
+            InlineKeyboardButton(
+                text=f"{metro_label(metro)} ({sum(1 for place in places if metro in place.get('metro', []))})",
+                callback_data=f"plan_metro:{start + index}",
+            )
+        ]
+        for index, metro in enumerate(metros[start:end])
+    ]
+
+    nav: list[InlineKeyboardButton] = []
+    if page > 0:
+        nav.append(InlineKeyboardButton(text="← назад", callback_data=f"plan_metro_page:{page - 1}"))
+    if end < len(metros):
+        nav.append(InlineKeyboardButton(text="дальше →", callback_data=f"plan_metro_page:{page + 1}"))
+    if nav:
+        keyboard.append(nav)
+
+    keyboard.append([InlineKeyboardButton(text="🎲 любое метро", callback_data="plan_area:any")])
+    return InlineKeyboardMarkup(inline_keyboard=keyboard)
 
 
 def top_types_for_places(places: list[dict[str, Any]], limit: int = 8) -> list[str]:
@@ -2798,7 +3068,7 @@ async def handle_ingredients_query(message: Message, state: FSMContext) -> None:
 @router.message(F.text == PLACE_COLLECTIONS_BUTTON)
 async def handle_place_collections(message: Message) -> None:
     await message.answer(
-        "что открываем? можно смотреть всё подряд или сузить по городу, метро, формату и Аниным спискам.",
+        "что открываем? сначала можно выбрать всё, город или формат. метро — если хочется точнее по Москве.",
         reply_markup=place_collections_keyboard(),
     )
 
@@ -2815,15 +3085,16 @@ async def handle_all_places(message: Message) -> None:
 async def handle_place_search_request(message: Message, state: FSMContext) -> None:
     await state.set_state(PlaceSearchState.waiting_for_query)
     await message.answer(
-        "напиши запрос: Москва кофе, метро Китай-город, бар где Аня была, Аня хочет сходить на бранч",
+        "напиши запрос: «кофе у Китай-города», «бар где Аня была», «Аня хочет сходить на бранч». или выбери рандом ниже.",
         reply_markup=places_keyboard(),
     )
+    await message.answer("быстрый рандом:", reply_markup=place_search_random_keyboard())
 
 
 @router.message(F.text == PLACE_DECIDE_BUTTON)
 async def handle_place_decide_request(message: Message) -> None:
     await message.answer(
-        "если не хочется выбирать руками, я могу ткнуть рандом, подобрать по вайбу или собрать мини-план.",
+        "помогу выбрать. если не знаешь деталей, ничего страшного: выбери одно место или мини-план, а я дальше задам пару вопросов.",
         reply_markup=place_decide_keyboard(),
     )
 
@@ -2841,14 +3112,14 @@ async def handle_random_place(message: Message) -> None:
 
 @router.message(F.text == PLACE_PICK_BUTTON)
 async def handle_place_pick_request(message: Message) -> None:
-    await message.answer("какой вайб выбираем?", reply_markup=place_pick_keyboard())
+    await message.answer("окей, выбираем одно место. какой вайб?", reply_markup=single_place_scope_keyboard())
 
 
 @router.message(F.text == TODAY_PLAN_BUTTON)
 async def handle_today_plan_request(message: Message, state: FSMContext) -> None:
     await state.set_state(PlacePlanState.waiting_for_query)
     await message.answer(
-        "напиши, что нужно: «кофе и еда у Китай-города», «только бар», «завтрак без бара». можно просто «любой».",
+        "напиши, что нужно: «кофе и ужин», «только бар», «завтрак без бара». метро я уточню следующим шагом.",
         reply_markup=places_keyboard(),
     )
 
@@ -2865,12 +3136,55 @@ async def handle_today_plan_query(message: Message, state: FSMContext) -> None:
         await message.answer("мест пока нет", reply_markup=places_keyboard())
         return
 
-    plan_text, selected_places = build_today_plan(places, text)
-    if not selected_places:
-        await message.answer("не смогла собрать план, мест пока маловато.", reply_markup=places_keyboard())
+    if should_ask_plan_area(text, places):
+        await state.update_data(pending_plan_text=text)
+        await state.set_state(PlacePlanState.waiting_for_area)
+        await message.answer(
+            "окей, а где примерно? напиши метро текстом или выбери кнопкой.",
+            reply_markup=plan_area_keyboard(places),
+        )
         return
 
-    await message.answer(plan_text, parse_mode="HTML", reply_markup=places_keyboard())
+    await state.set_state(None)
+    await send_today_plan(message, places, text)
+
+
+@router.message(PlacePlanState.waiting_for_area)
+async def handle_today_plan_area_query(message: Message, state: FSMContext) -> None:
+    text = message.text or ""
+    if await route_menu_button(message, state, text):
+        return
+
+    places = load_places()
+    if not places:
+        await state.set_state(None)
+        await message.answer("мест пока нет", reply_markup=places_keyboard())
+        return
+
+    data = await state.get_data()
+    pending_single_scope = str(data.get("pending_single_scope") or "").strip()
+    pending_text = str(data.get("pending_plan_text") or "").strip()
+    area_filters = parse_place_filters(text, places)
+    if pending_single_scope:
+        metro = str(area_filters.get("metro") or "").strip()
+        await state.update_data(pending_single_scope="", pending_plan_text="")
+        await state.set_state(None)
+        await send_single_place_choice(
+            message,
+            places,
+            pending_single_scope,
+            message.from_user.id if message.from_user else None,
+            metro or None,
+        )
+        return
+
+    final_text = pending_text
+    if area_filters.get("metro") or area_filters.get("city"):
+        final_text = f"{pending_text} {text}".strip()
+
+    await state.update_data(pending_plan_text="")
+    await state.set_state(None)
+    await send_today_plan(message, places, final_text or text)
 
 
 @router.message(F.text == PLACE_FAVORITES_BUTTON)
@@ -3141,18 +3455,26 @@ async def handle_place_decide(callback: CallbackQuery, state: FSMContext) -> Non
             return
 
         if action == "random":
+            await state.set_state(None)
             await callback.message.answer("я бы сходила сюда:", reply_markup=places_keyboard())
             await send_place(callback.message, random.choice(places), callback.from_user.id if callback.from_user else None)
             return
 
-        if action == "pick":
-            await callback.message.answer("какой вайб выбираем?", reply_markup=place_pick_keyboard())
+        if action in {"single", "pick"}:
+            await callback.message.answer("окей, выбираем одно место. какой вайб?", reply_markup=single_place_scope_keyboard())
+            return
+
+        if action == "unknown":
+            await callback.message.answer(
+                "начнём с простого: тебе нужна одна точка или мини-план на несколько мест?",
+                reply_markup=place_decide_keyboard(),
+            )
             return
 
         if action == "plan":
             await state.set_state(PlacePlanState.waiting_for_query)
             await callback.message.answer(
-                "напиши, что нужно: «кофе и еда у Китай-города», «только бар», «завтрак без бара». можно просто «любой».",
+                "напиши, что нужно: «кофе и ужин», «только бар», «завтрак без бара». метро я уточню следующим шагом.",
                 reply_markup=places_keyboard(),
             )
             return
@@ -3162,20 +3484,153 @@ async def handle_place_decide(callback: CallbackQuery, state: FSMContext) -> Non
     await answer_or_alert(callback, body)
 
 
-@router.callback_query(F.data.startswith("place_pick:"))
-async def handle_place_pick(callback: CallbackQuery) -> None:
-    scope = (callback.data or "").removeprefix("place_pick:")
+@router.callback_query(F.data.startswith("plan_area:"))
+async def handle_plan_area(callback: CallbackQuery, state: FSMContext) -> None:
+    action = (callback.data or "").removeprefix("plan_area:")
     places = load_places()
-    candidates = places_by_pick_scope(places, scope)
-    chosen = random.choice(candidates or places) if places else None
 
     async def body() -> None:
-        if chosen is None:
+        if not places:
+            await state.set_state(None)
             await callback.message.answer("мест пока нет", reply_markup=places_keyboard())
             return
 
-        await callback.message.answer("я бы выбрала вот это:", reply_markup=places_keyboard())
-        await send_place(callback.message, chosen, callback.from_user.id if callback.from_user else None)
+        data = await state.get_data()
+        pending_single_scope = str(data.get("pending_single_scope") or "").strip()
+        pending_text = str(data.get("pending_plan_text") or "").strip()
+        if not pending_text and not pending_single_scope:
+            await state.set_state(PlacePlanState.waiting_for_query)
+            await callback.message.answer("напиши, что нужно для плана: кофе, ужин, бар, завтрак.", reply_markup=places_keyboard())
+            return
+
+        context_places = pending_area_places(places, data)
+        if action == "choose":
+            try:
+                await callback.message.edit_text(
+                    plan_metro_page_text(context_places, 0),
+                    reply_markup=plan_metro_keyboard(context_places, 0),
+                )
+            except Exception:
+                await callback.message.answer(
+                    plan_metro_page_text(context_places, 0),
+                    reply_markup=plan_metro_keyboard(context_places, 0),
+                )
+            return
+
+        if pending_single_scope:
+            await state.update_data(pending_single_scope="", pending_plan_text="")
+            await state.set_state(None)
+            await send_single_place_choice(
+                callback.message,
+                places,
+                pending_single_scope,
+                callback.from_user.id if callback.from_user else None,
+            )
+            return
+
+        final_text = pending_text
+        await state.update_data(pending_plan_text="")
+        await state.set_state(None)
+        await send_today_plan(callback.message, places, final_text)
+
+    await answer_or_alert(callback, body)
+
+
+@router.callback_query(F.data.startswith("single_place:"))
+async def handle_single_place_scope(callback: CallbackQuery, state: FSMContext) -> None:
+    scope = (callback.data or "").removeprefix("single_place:")
+    places = load_places()
+
+    async def body() -> None:
+        if not places:
+            await callback.message.answer("мест пока нет", reply_markup=places_keyboard())
+            return
+
+        await ask_single_place_area(callback.message, state, places, scope)
+
+    await answer_or_alert(callback, body)
+
+
+@router.callback_query(F.data.startswith("plan_metro_page:"))
+async def handle_plan_metro_page(callback: CallbackQuery, state: FSMContext) -> None:
+    try:
+        page = int((callback.data or "").removeprefix("plan_metro_page:"))
+    except ValueError:
+        page = 0
+
+    places = load_places()
+    data = await state.get_data()
+    context_places = pending_area_places(places, data)
+
+    async def body() -> None:
+        try:
+            await callback.message.edit_text(
+                plan_metro_page_text(context_places, page),
+                reply_markup=plan_metro_keyboard(context_places, page),
+            )
+        except Exception:
+            await callback.message.answer(
+                plan_metro_page_text(context_places, page),
+                reply_markup=plan_metro_keyboard(context_places, page),
+            )
+
+    await answer_or_alert(callback, body)
+
+
+@router.callback_query(F.data.startswith("plan_metro:"))
+async def handle_plan_metro(callback: CallbackQuery, state: FSMContext) -> None:
+    index_text = (callback.data or "").removeprefix("plan_metro:")
+    places = load_places()
+
+    async def body() -> None:
+        data = await state.get_data()
+        pending_single_scope = str(data.get("pending_single_scope") or "").strip()
+        pending_text = str(data.get("pending_plan_text") or "").strip()
+        if not pending_text and not pending_single_scope:
+            await state.set_state(PlacePlanState.waiting_for_query)
+            await callback.message.answer("напиши, что нужно для плана: кофе, ужин, бар, завтрак.", reply_markup=places_keyboard())
+            return
+
+        context_places = pending_area_places(places, data)
+        metros = metro_filter_values(context_places)
+        metro = metros[int(index_text)] if index_text.isdigit() and int(index_text) < len(metros) else ""
+        if not metro:
+            await callback.message.answer(
+                "не нашла это метро в списке, выбери ещё раз.",
+                reply_markup=plan_metro_keyboard(context_places, 0),
+            )
+            return
+
+        if pending_single_scope:
+            await state.update_data(pending_single_scope="", pending_plan_text="")
+            await state.set_state(None)
+            await send_single_place_choice(
+                callback.message,
+                places,
+                pending_single_scope,
+                callback.from_user.id if callback.from_user else None,
+                metro,
+            )
+            return
+
+        await state.update_data(pending_plan_text="", pending_single_scope="")
+        await state.set_state(None)
+        await send_today_plan(callback.message, places, f"{pending_text} метро {metro}".strip())
+
+    await answer_or_alert(callback, body)
+
+
+@router.callback_query(F.data.startswith("place_pick:"))
+async def handle_place_pick(callback: CallbackQuery, state: FSMContext) -> None:
+    scope = (callback.data or "").removeprefix("place_pick:")
+    places = load_places()
+
+    async def body() -> None:
+        if not places:
+            await callback.message.answer("мест пока нет", reply_markup=places_keyboard())
+            return
+
+        await ask_single_place_area(callback.message, state, places, scope)
 
     await answer_or_alert(callback, body)
 
