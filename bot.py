@@ -88,6 +88,7 @@ METRO_LINE_EMOJIS = {
     "Лубянка": "🔴",
     "Маяковская": "🟢",
     "Менделеевская": "⚪",
+    "Марксистская": "🟡",
     "Новокузнецкая": "🟢",
     "Новослободская": "🟤",
     "Октябрьская": "🟠🟤",
@@ -126,8 +127,8 @@ PLACE_TYPE_LABELS = {
 }
 PLACE_TYPE_ALIASES = {
     "coffee": ["кофе", "кофейня", "кофейни", "капучино", "флэт", "латте"],
-    "cafe": ["кафе", "посидеть", "поесть", "еда"],
-    "restaurant": ["ресторан", "ресторанчик", "ужин", "поужинать"],
+    "cafe": ["кафе", "посидеть", "поесть", "еда", "обед", "пообедать"],
+    "restaurant": ["ресторан", "ресторанчик", "ужин", "поужинать", "поесть", "еда", "обед"],
     "bar": ["бар", "коктейль", "коктейли", "вино", "выпить"],
     "brunch": ["бранч", "завтрак", "яйца", "eggs", "breakfast"],
     "kebab": ["кебаб", "шаурма", "кебабы"],
@@ -147,6 +148,48 @@ BROAD_PLACE_QUERIES = {
     "куда сходить",
     "куда пойти",
 }
+PLAN_STEP_DEFINITIONS: list[dict[str, Any]] = [
+    {
+        "key": "coffee",
+        "label": "кофе",
+        "icon": "☕",
+        "types": {"coffee"},
+        "fallback_types": {"cafe"},
+        "aliases": ("кофе", "кофейня", "кофейни", "капучино", "латте", "флэт"),
+    },
+    {
+        "key": "food",
+        "label": "поесть",
+        "icon": "🍽",
+        "types": {"restaurant", "cafe", "asian", "kebab", "pizzeria", "brunch"},
+        "aliases": ("еда", "поесть", "обед", "пообедать", "ужин", "поужинать", "ресторан", "пицца", "кебаб", "шаурма", "лапша", "азиатское", "корейское"),
+    },
+    {
+        "key": "brunch",
+        "label": "завтрак / бранч",
+        "icon": "🍳",
+        "types": {"brunch"},
+        "fallback_types": {"cafe"},
+        "aliases": ("завтрак", "позавтракать", "бранч", "яйца"),
+    },
+    {
+        "key": "bar",
+        "label": "бар / вечер",
+        "icon": "🍸",
+        "types": {"bar"},
+        "aliases": ("бар", "коктейль", "коктейли", "вино", "выпить"),
+    },
+    {
+        "key": "culture",
+        "label": "культурное",
+        "icon": "🎭",
+        "types": {"culture", "record_store"},
+        "aliases": ("культура", "культурное", "пластинки", "музыка", "погулять"),
+    },
+]
+DEFAULT_PLAN_STEP_KEYS = ("coffee", "food", "bar")
+PLAN_NEGATION_WORDS = {"без", "кроме"}
+PLAN_NEGATION_TAILS = {"надо", "нужен", "нужна", "нужно", "хочу", "хочется"}
 
 STOPWORDS = {
     "а",
@@ -1580,10 +1623,78 @@ def choose_distinct_place(candidates: list[dict[str, Any]], used_ids: set[str]) 
     return random.choice(fresh or candidates)
 
 
-def plan_scope_from_text(text: str, places: list[dict[str, Any]]) -> tuple[list[dict[str, Any]], str]:
+def plan_step_by_key(key: str) -> dict[str, Any] | None:
+    return next((step for step in PLAN_STEP_DEFINITIONS if step["key"] == key), None)
+
+
+def alias_stems(alias: str) -> list[str]:
+    return [stem_word(word) for word in words_from_text(alias)]
+
+
+def alias_matches_at(words: list[str], alias: str, index: int) -> bool:
+    stems = alias_stems(alias)
+    if not stems or index + len(stems) > len(words):
+        return False
+
+    word_stems = [stem_word(word) for word in words[index : index + len(stems)]]
+    return word_stems == stems
+
+
+def plan_alias_positions(words: list[str], aliases: tuple[str, ...]) -> list[int]:
+    positions: list[int] = []
+    for index in range(len(words)):
+        if any(alias_matches_at(words, alias, index) for alias in aliases):
+            positions.append(index)
+
+    return positions
+
+
+def is_plan_alias_negated(words: list[str], position: int) -> bool:
+    before = words[max(0, position - 3) : position]
+    if any(word in PLAN_NEGATION_WORDS for word in before):
+        return True
+
+    if len(before) >= 2 and before[-2] == "не" and before[-1] in PLAN_NEGATION_TAILS:
+        return True
+
+    after = words[position + 1 : position + 3]
+    if len(after) >= 2 and after[0] == "не" and after[1] in PLAN_NEGATION_TAILS:
+        return True
+
+    return False
+
+
+def requested_plan_steps(text: str) -> list[dict[str, Any]]:
+    words = words_from_text(text)
+    requested: list[tuple[int, str]] = []
+    excluded_keys: set[str] = set()
+
+    for step in PLAN_STEP_DEFINITIONS:
+        key = str(step["key"])
+        aliases = tuple(str(alias) for alias in step["aliases"])
+        for position in plan_alias_positions(words, aliases):
+            if is_plan_alias_negated(words, position):
+                excluded_keys.add(key)
+            else:
+                requested.append((position, key))
+
+    if requested:
+        ordered_keys = [key for _, key in sorted(requested, key=lambda item: item[0])]
+    else:
+        ordered_keys = list(DEFAULT_PLAN_STEP_KEYS)
+
+    unique_keys: list[str] = []
+    for key in ordered_keys:
+        if key not in excluded_keys and key not in unique_keys:
+            unique_keys.append(key)
+
+    return [step for key in unique_keys if (step := plan_step_by_key(key)) is not None]
+
+
+def plan_scope_from_text(text: str, places: list[dict[str, Any]]) -> tuple[list[dict[str, Any]], str, bool]:
     normalized = compact_text(text)
     if not normalized or normalized in {"любой", "любое", "все равно", "куда угодно", "без разницы"}:
-        return places, "без привязки к метро"
+        return places, "без привязки к метро", False
 
     filters = parse_place_filters(text, places)
     scope_filters = {
@@ -1596,35 +1707,49 @@ def plan_scope_from_text(text: str, places: list[dict[str, Any]]) -> tuple[list[
         "random": False,
         "terms": [],
     }
-    scoped = apply_place_filters(places, scope_filters) if has_place_filters(scope_filters) else places
+    has_scope = has_place_filters(scope_filters)
+    scoped = apply_place_filters(places, scope_filters) if has_scope else places
     if scoped:
         summary = place_filter_summary(scope_filters) or "по твоему запросу"
-        return scoped, summary
+        return scoped, summary, has_scope
 
-    return places, "по этому месту пусто, поэтому собрала из всей базы"
+    return [], "по этой зоне ничего не нашла", has_scope
 
 
 def build_today_plan(places: list[dict[str, Any]], text: str) -> tuple[str, list[dict[str, Any]]]:
-    scoped_places, scope_text = plan_scope_from_text(text, places)
+    scoped_places, scope_text, has_scope = plan_scope_from_text(text, places)
     used_ids: set[str] = set()
-    steps: list[tuple[str, set[str], str]] = [
-        ("1. кофе", {"coffee", "cafe", "brunch"}, "☕"),
-        ("2. поесть", {"restaurant", "cafe", "asian", "kebab", "pizzeria", "brunch"}, "🍽"),
-        ("3. бар / вечер", {"bar", "restaurant", "culture"}, "🍸"),
-    ]
+    steps = requested_plan_steps(text)
     selected: list[tuple[str, dict[str, Any]]] = []
+    missing: list[str] = []
 
-    for label, place_types, icon in steps:
+    for index, step in enumerate(steps, start=1):
+        label = str(step["label"])
+        place_types = set(step["types"])
+        fallback_types = set(step.get("fallback_types", set()))
+        icon = str(step["icon"])
         candidates = [place for place in scoped_places if place_has_any_type(place, place_types)]
-        fallback_candidates = [place for place in places if place_has_any_type(place, place_types)]
-        chosen = choose_distinct_place(candidates or fallback_candidates, used_ids)
+        if not candidates and fallback_types:
+            candidates = [place for place in scoped_places if place_has_any_type(place, fallback_types)]
+        if not candidates and not has_scope:
+            candidates = [place for place in places if place_has_any_type(place, place_types)]
+            if not candidates and fallback_types:
+                candidates = [place for place in places if place_has_any_type(place, fallback_types)]
+
+        chosen = choose_distinct_place(candidates, used_ids)
         if chosen is None:
+            missing.append(label)
             continue
         used_ids.add(item_id(chosen))
-        selected.append((f"{label} {icon}", chosen))
+        selected.append((f"{index}. {label} {icon}", chosen))
 
     lines = [f"🗺 план на сегодня", f"зона: {escape(scope_text)}"]
+    if not steps:
+        lines.append("ты всё исключила из плана, я честно растерялась")
     lines.extend(place_plan_line(label, place) for label, place in selected)
+    if missing:
+        lines.append("не нашла под запрос: " + escape(", ".join(missing)))
+
     return "\n\n".join(lines), [place for _, place in selected]
 
 
@@ -2723,7 +2848,7 @@ async def handle_place_pick_request(message: Message) -> None:
 async def handle_today_plan_request(message: Message, state: FSMContext) -> None:
     await state.set_state(PlacePlanState.waiting_for_query)
     await message.answer(
-        "напиши метро или район. можно просто «любой», и я соберу кофе → еда → бар.",
+        "напиши, что нужно: «кофе и еда у Китай-города», «только бар», «завтрак без бара». можно просто «любой».",
         reply_markup=places_keyboard(),
     )
 
@@ -3027,7 +3152,7 @@ async def handle_place_decide(callback: CallbackQuery, state: FSMContext) -> Non
         if action == "plan":
             await state.set_state(PlacePlanState.waiting_for_query)
             await callback.message.answer(
-                "напиши город, метро или район. можно просто «любой», и я соберу кофе → еда → бар.",
+                "напиши, что нужно: «кофе и еда у Китай-города», «только бар», «завтрак без бара». можно просто «любой».",
                 reply_markup=places_keyboard(),
             )
             return
